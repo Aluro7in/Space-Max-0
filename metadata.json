@@ -1,0 +1,6 @@
+{
+  "name": "Space-Max 0: Orbital Intelligence Engine",
+  "description": "NASA Space Apps Challenge orbital telemetry, SPHEREx time-domain blink comparator, 102-band infrared spectral analyzer, and AI copilot command center.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
