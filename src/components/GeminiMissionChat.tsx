@@ -234,13 +234,13 @@ export function GeminiMissionChat({
       className={
         expandedView
           ? 'flex h-full flex-col'
-          : 'flex flex-col rounded-xl border border-cyan-500/25 bg-slate-950/85 p-3'
+          : 'flex flex-col rounded-xl border border-amber-500/25 bg-[#050507] p-3'
       }
     >
       {/* Header + Expand & Reset Controls */}
       <div className="flex flex-wrap items-center justify-between gap-2 pb-2">
-        <div className="flex items-center gap-1.5 text-xs font-semibold text-white">
-          <Bot className="h-4 w-4 text-cyan-400" aria-hidden="true" />
+        <div className="flex items-center gap-1.5 text-xs font-semibold text-[#F8FAFC]">
+          <Bot className="h-4 w-4 text-amber-400" aria-hidden="true" />
           <span>Gemini AI Space Guide</span>
         </div>
 
@@ -250,7 +250,7 @@ export function GeminiMissionChat({
             onClick={handleResetChat}
             title="Start new conversation"
             aria-label="Reset chat thread"
-            className="inline-flex items-center gap-1 rounded-lg border border-slate-800 bg-slate-900 px-2 py-1 text-[10px] font-medium text-slate-300 transition-colors hover:border-cyan-500/40 hover:text-cyan-200"
+            className="inline-flex items-center gap-1 rounded-lg border border-amber-500/20 bg-[#0B0C10] px-2 py-1 text-[10px] font-medium text-slate-300 transition-colors hover:border-amber-500/45 hover:text-amber-200"
           >
             <RotateCcw className="h-3 w-3" aria-hidden="true" />
             <span>Reset</span>
@@ -260,7 +260,7 @@ export function GeminiMissionChat({
             type="button"
             onClick={() => setIsExpanded((prev) => !prev)}
             aria-label={expandedView ? 'Minimize chat window' : 'Expand chat window'}
-            className="inline-flex items-center gap-1 rounded-lg border border-slate-800 bg-slate-900 px-2 py-1 text-[10px] font-medium text-slate-300 transition-colors hover:border-cyan-500/40 hover:text-cyan-200"
+            className="inline-flex items-center gap-1 rounded-lg border border-amber-500/20 bg-[#0B0C10] px-2 py-1 text-[10px] font-medium text-slate-300 transition-colors hover:border-amber-500/45 hover:text-amber-200"
           >
             {expandedView ? (
               <Minimize2 className="h-3 w-3" aria-hidden="true" />
@@ -272,7 +272,7 @@ export function GeminiMissionChat({
       </div>
 
       {/* Role Selector & Speed/Reasoning Mode */}
-      <div className="mb-2 space-y-1.5 border-y border-slate-800/80 py-2">
+      <div className="mb-2 space-y-1.5 border-y border-amber-500/15 py-2">
         <div className="flex flex-wrap items-center gap-1" role="group" aria-label="Chatbot specialist role">
           {ROLE_OPTIONS.map((opt) => {
             const active = role === opt.id;
@@ -284,8 +284,8 @@ export function GeminiMissionChat({
                 title={opt.hint}
                 className={`rounded-lg border px-2 py-0.5 text-[10px] font-medium transition-colors ${
                   active
-                    ? 'border-cyan-400/60 bg-cyan-500/20 text-cyan-200'
-                    : 'border-slate-800 bg-slate-900/70 text-slate-400 hover:text-slate-200'
+                    ? 'border-amber-400/60 bg-amber-500/20 text-amber-200'
+                    : 'border-amber-500/15 bg-[#0B0C10] text-slate-400 hover:text-amber-100'
                 }`}
               >
                 {opt.label}
@@ -304,8 +304,8 @@ export function GeminiMissionChat({
                 onClick={() => setModelMode(mode.id)}
                 className={`inline-flex items-center gap-1 rounded-lg border px-2 py-0.5 text-[10px] transition-colors ${
                   active
-                    ? 'border-fuchsia-400/60 bg-fuchsia-500/15 text-fuchsia-200'
-                    : 'border-slate-800/90 bg-slate-900/50 text-slate-400 hover:text-slate-200'
+                    ? 'border-[#FF5500]/60 bg-[#FF5500]/15 text-orange-200'
+                    : 'border-amber-500/15 bg-[#0B0C10] text-slate-400 hover:text-amber-100'
                 }`}
               >
                 {mode.id === 'fast' ? (
@@ -342,25 +342,25 @@ export function GeminiMissionChat({
               <div
                 className={`max-w-[92%] rounded-xl border px-2.5 py-2 text-xs leading-relaxed ${
                   isUser
-                    ? 'border-cyan-400/40 bg-cyan-500/15 text-cyan-50'
-                    : 'border-slate-800 bg-slate-900/90 text-slate-200'
+                    ? 'border-amber-400/40 bg-amber-500/15 text-amber-50'
+                    : 'border-amber-500/15 bg-[#0B0C10] text-slate-200'
                 }`}
               >
                 <div className="mb-1 flex items-center gap-1.5 text-[10px] text-slate-400">
                   {isUser ? (
                     <>
-                      <User className="h-3 w-3 text-cyan-300" aria-hidden="true" />
-                      <span className="font-semibold text-cyan-300">You</span>
+                      <User className="h-3 w-3 text-amber-300" aria-hidden="true" />
+                      <span className="font-semibold text-amber-300">You</span>
                     </>
                   ) : (
                     <>
-                      <Bot className="h-3 w-3 text-fuchsia-300" aria-hidden="true" />
+                      <Bot className="h-3 w-3 text-orange-300" aria-hidden="true" />
                       <span className="font-semibold text-slate-200">
                         {ROLE_OPTIONS.find((r) => r.id === msg.persona)?.label ??
                           'Space Guide'}
                       </span>
                       {msg.modelUsed && (
-                        <span className="rounded bg-slate-800 px-1 py-0.2 font-mono text-[9px] text-slate-400">
+                        <span className="rounded bg-[#050507] px-1 py-0.2 font-mono text-[9px] text-slate-400">
                           {msg.modelUsed}
                         </span>
                       )}
@@ -378,11 +378,11 @@ export function GeminiMissionChat({
 
         {isSending && (
           <div className="flex items-start">
-            <div className="inline-flex items-center gap-2 rounded-xl border border-cyan-500/30 bg-slate-900/90 px-3 py-2 text-xs text-cyan-200">
+            <div className="inline-flex items-center gap-2 rounded-xl border border-amber-500/30 bg-[#0B0C10] px-3 py-2 text-xs text-amber-200">
               <span className="flex gap-1">
-                <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-cyan-400" />
-                <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-cyan-400" />
-                <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-cyan-400" />
+                <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-amber-400" />
+                <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-amber-400" />
+                <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-amber-400" />
               </span>
               <span>Gemini is analyzing SPHEREx telemetry...</span>
             </div>
@@ -410,7 +410,7 @@ export function GeminiMissionChat({
             type="button"
             disabled={isSending}
             onClick={() => void sendMessage(chip)}
-            className="rounded-full border border-slate-700/80 bg-slate-900 px-2.5 py-1 text-[10px] font-medium text-cyan-200 transition-colors hover:border-cyan-400/60 hover:bg-cyan-500/15 disabled:opacity-50"
+            className="rounded-full border border-amber-500/20 bg-[#0B0C10] px-2.5 py-1 text-[10px] font-medium text-amber-200 transition-colors hover:border-amber-400/60 hover:bg-amber-500/15 disabled:opacity-50"
           >
             {chip}
           </button>
@@ -426,13 +426,13 @@ export function GeminiMissionChat({
           onChange={(e) => setInput(e.target.value)}
           placeholder="Ask Gemini Space Guide..."
           aria-label="Ask Gemini Space Guide a follow-up question"
-          className="min-w-0 flex-1 rounded-lg border border-slate-800 bg-slate-900 px-2.5 py-1.5 text-xs text-slate-100 placeholder:text-slate-500 focus:border-cyan-500 focus:outline-none disabled:opacity-60"
+          className="min-w-0 flex-1 rounded-lg border border-amber-500/20 bg-[#0B0C10] px-2.5 py-1.5 text-xs text-[#F8FAFC] placeholder:text-slate-500 focus:border-amber-400 focus:outline-none disabled:opacity-60"
         />
         <button
           type="submit"
           disabled={isSending || !input.trim()}
           aria-label="Send message to Gemini Space Guide"
-          className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-cyan-500/40 bg-cyan-500/20 text-cyan-300 transition-colors hover:bg-cyan-500/30 disabled:cursor-not-allowed disabled:opacity-45"
+          className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-amber-500/40 bg-amber-500/20 text-amber-300 transition-colors hover:bg-amber-500/30 disabled:cursor-not-allowed disabled:opacity-45"
         >
           <Send className="h-3.5 w-3.5" aria-hidden="true" />
         </button>
@@ -450,11 +450,11 @@ export function GeminiMissionChat({
           aria-modal="true"
           aria-label="Expanded Gemini AI Space Guide Chat"
           onClick={() => setIsExpanded(false)}
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4 backdrop-blur-md"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-md"
         >
           <div
             onClick={(e) => e.stopPropagation()}
-            className="flex h-[80vh] w-full max-w-2xl flex-col rounded-2xl border border-cyan-500/40 bg-slate-900/95 p-4 shadow-[0_0_50px_rgba(34,211,238,0.2)] backdrop-blur-xl sm:p-5"
+            className="flex h-[80vh] w-full max-w-2xl flex-col rounded-2xl border border-amber-500/40 bg-[#0B0C10]/95 p-4 shadow-[0_0_50px_rgba(245,158,11,0.2)] backdrop-blur-xl sm:p-5"
           >
             {renderChatBody(true)}
           </div>

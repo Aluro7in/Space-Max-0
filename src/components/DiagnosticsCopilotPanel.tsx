@@ -176,12 +176,12 @@ export function DiagnosticsCopilotPanel({
     <section
       data-tour="step-4"
       aria-label="Step 3: AI Space Guide and Discovery Vote"
-      className="flex flex-col justify-between gap-3.5 rounded-2xl border border-slate-800/80 bg-slate-900/60 p-4 backdrop-blur-md lg:col-span-3"
+      className="flex flex-col justify-between gap-3.5 rounded-2xl border border-amber-500/20 bg-[#0B0C10]/90 p-4 backdrop-blur-md lg:col-span-3"
     >
       {/* Header + Subtle Pro Telemetry Toggle for NASA Judges */}
       <div className="space-y-2.5">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <h2 className="text-sm font-bold text-white">
+          <h2 className="text-sm font-bold text-[#F8FAFC]">
             Step 3: AI Space Guide &amp; Vote
           </h2>
           <button
@@ -189,8 +189,8 @@ export function DiagnosticsCopilotPanel({
             onClick={() => setShowProTelemetry((prev) => !prev)}
             className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium transition-colors ${
               showProTelemetry
-                ? 'border-cyan-400/60 bg-cyan-500/20 text-cyan-200'
-                : 'border-slate-700 bg-slate-950 text-slate-400 hover:text-slate-200'
+                ? 'border-amber-400/60 bg-amber-500/20 text-amber-200'
+                : 'border-amber-500/20 bg-[#050507] text-slate-400 hover:text-amber-100'
             }`}
           >
             <Code2 className="h-3 w-3" aria-hidden="true" />
@@ -210,35 +210,35 @@ export function DiagnosticsCopilotPanel({
                   ? 'Real Planet / Brown Dwarf'
                   : 'Possible Camera Glitch'}
               </p>
-              <p className="text-[11px] text-emerald-300/80 tabular-nums">
+              <p className="text-[11px] tabular-nums text-emerald-300/80">
                 {cnnPct.toFixed(0)}% Match — Not camera dust
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-2.5 rounded-xl border border-fuchsia-500/30 bg-fuchsia-500/10 p-2.5">
-            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-fuchsia-500/20 text-fuchsia-300">
+          <div className="flex items-center gap-2.5 rounded-xl border border-[#FF5500]/30 bg-[#FF5500]/10 p-2.5">
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#FF5500]/20 text-orange-300">
               <CloudRain className="h-4 w-4" aria-hidden="true" />
             </div>
             <div className="min-w-0">
-              <p className="text-xs font-semibold text-fuchsia-200">
+              <p className="text-xs font-semibold text-orange-200">
                 Water &amp; Methane Detected
               </p>
-              <p className="text-[11px] text-fuchsia-300/80">
+              <p className="text-[11px] text-orange-300/80">
                 {atmosphereSubtext}
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-2.5 rounded-xl border border-cyan-500/30 bg-cyan-500/10 p-2.5">
-            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-cyan-500/20 text-cyan-300">
+          <div className="flex items-center gap-2.5 rounded-xl border border-amber-500/30 bg-amber-500/10 p-2.5">
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-amber-500/20 text-amber-300">
               <Navigation className="h-4 w-4" aria-hidden="true" />
             </div>
             <div className="min-w-0">
-              <p className="text-xs font-semibold text-cyan-200">
+              <p className="text-xs font-semibold text-amber-200">
                 Moving Across Sky
               </p>
-              <p className="text-[11px] text-cyan-300/80">
+              <p className="text-[11px] text-amber-300/80">
                 {gaiaMatched
                   ? 'Matched in Gaia Star Map'
                   : 'Missing from star maps'}
@@ -249,9 +249,9 @@ export function DiagnosticsCopilotPanel({
 
         {/* Optional Pro AI Telemetry Drawer for NASA Judges */}
         {showProTelemetry && (
-          <div className="space-y-2 rounded-xl border border-slate-700/80 bg-slate-950/90 p-3 font-mono text-[10px] text-slate-300">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-1.5">
-              <span className="text-cyan-300 font-semibold">
+          <div className="space-y-2 rounded-xl border border-amber-500/25 bg-[#050507] p-3 font-mono text-[10px] text-slate-300">
+            <div className="flex items-center justify-between border-b border-amber-500/15 pb-1.5">
+              <span className="font-semibold text-amber-300">
                 PyTorch Tri-Model Telemetry
               </span>
               <span className="text-slate-400">2D-CNN · RNN · GNN</span>
@@ -266,16 +266,16 @@ export function DiagnosticsCopilotPanel({
             </div>
             <div className="flex justify-between">
               <span>Spectral RNN:</span>
-              <span className="text-fuchsia-300">
+              <span className="text-orange-300">
                 {aiVerdicts.rnn_classification}
               </span>
             </div>
             <div className="flex items-center justify-between pt-1">
               <span className="inline-flex items-center gap-1">
-                <Compass className="h-3 w-3 text-cyan-400" aria-hidden="true" />
+                <Compass className="h-3 w-3 text-amber-400" aria-hidden="true" />
                 GNN Vector:
               </span>
-              <span className="text-cyan-300 tabular-nums">
+              <span className="tabular-nums text-amber-300">
                 pmRA {pmRa >= 0 ? '+' : ''}
                 {pmRa.toFixed(1)} | pmDec {pmDec >= 0 ? '+' : ''}
                 {pmDec.toFixed(1)} mas/yr ({radialVel.toFixed(1)} km/s)
@@ -288,21 +288,21 @@ export function DiagnosticsCopilotPanel({
                   cy="32"
                   r="24"
                   fill="none"
-                  stroke="#1e293b"
+                  stroke="#292524"
                   strokeWidth="1"
                   strokeDasharray="2 2"
                 />
-                <line x1="32" y1="6" x2="32" y2="58" stroke="#1e293b" strokeWidth="1" />
-                <line x1="6" y1="32" x2="58" y2="32" stroke="#1e293b" strokeWidth="1" />
+                <line x1="32" y1="6" x2="32" y2="58" stroke="#292524" strokeWidth="1" />
+                <line x1="6" y1="32" x2="58" y2="32" stroke="#292524" strokeWidth="1" />
                 <line
                   x1="32"
                   y1="32"
                   x2={arrowCoords.x2}
                   y2={arrowCoords.y2}
-                  stroke="#22d3ee"
+                  stroke="#F59E0B"
                   strokeWidth="2.2"
                 />
-                <circle cx="32" cy="32" r="2.5" fill="#f8fafc" />
+                <circle cx="32" cy="32" r="2.5" fill="#FFFBEB" />
               </svg>
             </div>
           </div>
@@ -320,9 +320,9 @@ export function DiagnosticsCopilotPanel({
       />
 
       {/* Discovery Vote Card */}
-      <div className="rounded-xl border border-slate-800 bg-slate-950/75 p-3.5">
+      <div className="rounded-xl border border-amber-500/20 bg-[#050507] p-3.5">
         <div className="mb-2.5 flex items-center justify-between">
-          <h3 className="text-xs font-bold text-white">
+          <h3 className="text-xs font-bold text-[#F8FAFC]">
             Did you spot the moving object?
           </h3>
           <span className="font-mono text-[10px] tabular-nums text-slate-400">
@@ -355,7 +355,7 @@ export function DiagnosticsCopilotPanel({
             className={`flex w-full items-center justify-between rounded-xl border px-3 py-1.5 text-xs font-medium transition-colors ${
               userVote === 'flag_artifact'
                 ? 'border-rose-400 bg-rose-500/20 text-rose-200'
-                : 'border-slate-800 bg-slate-900/80 text-slate-300 hover:border-rose-500/50'
+                : 'border-amber-500/15 bg-[#0B0C10] text-slate-300 hover:border-rose-500/50'
             }`}
           >
             <span className="inline-flex items-center gap-1.5">
@@ -373,7 +373,7 @@ export function DiagnosticsCopilotPanel({
             className={`flex w-full items-center justify-between rounded-xl border px-3 py-1.5 text-xs font-medium transition-colors ${
               userVote === 'known_star'
                 ? 'border-amber-400 bg-amber-500/20 text-amber-200'
-                : 'border-slate-800 bg-slate-900/80 text-slate-300 hover:border-amber-500/50'
+                : 'border-amber-500/15 bg-[#0B0C10] text-slate-300 hover:border-amber-500/50'
             }`}
           >
             <span className="inline-flex items-center gap-1.5">
@@ -390,7 +390,7 @@ export function DiagnosticsCopilotPanel({
         <div className="mt-2.5">
           <div
             aria-label="Community vote bar"
-            className="flex h-2 w-full overflow-hidden rounded-full bg-slate-900"
+            className="flex h-2 w-full overflow-hidden rounded-full bg-[#0B0C10]"
           >
             <div
               style={{ width: `${pctConfirm}%` }}
@@ -420,7 +420,7 @@ export function DiagnosticsCopilotPanel({
             className={`mt-2.5 flex items-start gap-2 rounded-xl border p-2.5 text-xs ${
               voteBanner.celebrate
                 ? 'border-emerald-400/60 bg-emerald-500/15 text-emerald-100'
-                : 'border-cyan-500/40 bg-cyan-500/10 text-cyan-100'
+                : 'border-amber-500/40 bg-amber-500/10 text-amber-100'
             }`}
           >
             {voteBanner.celebrate && (

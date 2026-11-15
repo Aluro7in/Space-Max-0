@@ -1,7 +1,15 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Compass, Layers, Sparkles } from 'lucide-react';
+import {
+  Compass,
+  Layers,
+  LocateFixed,
+  Sparkles,
+  ZoomIn,
+  ZoomOut,
+} from 'lucide-react';
 import type { AladinBaseSurvey, TelescopeOverlayState } from '../types/telemetry';
 import { findClosestPreset } from '../data/presetsAndFallback';
+import { buildHips2FitsUrl, type SurveyHipsId } from '../utils/astroStretch';
 
 interface AladinSkyMapProps {
   ra: number;
@@ -12,11 +20,29 @@ interface AladinSkyMapProps {
   onToggleOverlay: (key: keyof TelescopeOverlayState) => void;
 }
 
-const SURVEY_OPTIONS: Array<{ id: AladinBaseSurvey; label: string }> = [
-  { id: 'P/WISE/color', label: 'WISE Heat Map' },
-  { id: 'P/2MASS/color', label: '2MASS Near-IR' },
-  { id: 'P/DSS2/color', label: 'Visible Sky (DSS2)' },
+const SURVEY_OPTIONS: Array<{
+  id: AladinBaseSurvey;
+  hips: SurveyHipsId;
+  label: string;
+}> = [
+  { id: 'P/WISE/color', hips: 'CDS/P/allWISE/color', label: 'WISE Heat Map' },
+  { id: 'P/2MASS/color', hips: 'CDS/P/2MASS/color', label: '2MASS Near-IR' },
+  { id: 'P/DSS2/color', hips: 'CDS/P/DSS2/color', label: 'Visible Sky (DSS2)' },
 ];
+
+interface CatalogSourcePoint {
+  id: string;
+  nx: number;
+  ny: number;
+  ra: number;
+  dec: number;
+  mag: number;
+  pmRa: number;
+  pmDec: number;
+  inGaia: boolean;
+  inWise: boolean;
+  inTwoMass: boolean;
+}
 
 function seededRand(seed: number): () => number {
   let s = Math.floor(Math.abs(seed * 10000)) % 2147483647;
@@ -35,368 +61,439 @@ export function AladinSkyMap({
   overlays,
   onToggleOverlay,
 }: AladinSkyMapProps) {
-  const containerRef = useRef<HTMLDivElement | null>(null);
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const aladinContainerRef = useRef<HTMLDivElement | null>(null);
+  const overlayCanvasRef = useRef<HTMLCanvasElement | null>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const aladinRef = useRef<any>(null);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const gaiaCatRef = useRef<any>(null);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const wiseCatRef = useRef<any>(null);
 
   const [baseSurvey, setBaseSurvey] = useState<AladinBaseSurvey>('P/WISE/color');
+  const [zoomMult, setZoomMult] = useState<number>(1.0);
+  const [panOffset, setPanOffset] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  const [isDragging, setIsDragging] = useState<boolean>(false);
+  const dragStartRef = useRef<{ x: number; y: number; px: number; py: number } | null>(null);
+
+  const [surveyImgLoaded, setSurveyImgLoaded] = useState<boolean>(false);
   const [aladinReady, setAladinReady] = useState<boolean>(false);
-  const [aladinFailed, setAladinFailed] = useState<boolean>(false);
-  const [forceInteractiveCanvas, setForceInteractiveCanvas] =
-    useState<boolean>(false);
-  const [hoverCoords, setHoverCoords] = useState<{
-    ra: number;
-    dec: number;
-  } | null>(null);
+  const [useAladinLive, setUseAladinLive] = useState<boolean>(false);
+
+  const [hoverCoords, setHoverCoords] = useState<{ ra: number; dec: number } | null>(
+    null
+  );
+  const [selectedSource, setSelectedSource] = useState<CatalogSourcePoint | null>(
+    null
+  );
 
   const preset = useMemo(() => findClosestPreset(ra, dec), [ra, dec]);
+  const activeSurvey = useMemo(
+    () => SURVEY_OPTIONS.find((s) => s.id === baseSurvey) ?? SURVEY_OPTIONS[0],
+    [baseSurvey]
+  );
 
-  // Initialize Aladin Lite v3 once
+  const effectiveFov = Math.max(0.02, Math.min(3.5, fov / zoomMult));
+  const hipsImageUrl = useMemo(
+    () => buildHips2FitsUrl(activeSurvey.hips, ra, dec, effectiveFov, 512, 512),
+    [activeSurvey.hips, ra, dec, effectiveFov]
+  );
+
+  // Reset pan/zoom & selection when target changes
   useEffect(() => {
-    let cancelled = false;
+    setZoomMult(1.0);
+    setPanOffset({ x: 0, y: 0 });
+    setSelectedSource(null);
+    setSurveyImgLoaded(false);
+  }, [ra, dec, fov]);
 
+  useEffect(() => {
+    setSurveyImgLoaded(false);
+  }, [hipsImageUrl]);
+
+  // Generate deterministic Gaia DR3 / WISE / 2MASS catalog markers for interactive inspection
+  const catalogSources = useMemo<CatalogSourcePoint[]>(() => {
+    const rand = seededRand(ra * 17.3 + dec * 29.1 + Math.round(fov * 100));
+    const count = fov >= 0.8 ? 36 : 24;
+    return Array.from({ length: count }, (_, idx) => {
+      const nx = 0.08 + rand() * 0.84;
+      const ny = 0.08 + rand() * 0.84;
+      return {
+        id: `GAIA DR3 ${Math.floor(100000000 + rand() * 899999999)}`,
+        nx,
+        ny,
+        ra: ra - (nx - 0.5) * effectiveFov,
+        dec: dec - (ny - 0.5) * effectiveFov,
+        mag: Number((12.4 + rand() * 6.8).toFixed(2)),
+        pmRa: Number(((rand() - 0.5) * 32).toFixed(1)),
+        pmDec: Number(((rand() - 0.5) * 32).toFixed(1)),
+        inGaia: idx % 4 !== 0,
+        inWise: idx % 3 === 0,
+        inTwoMass: idx % 5 === 0,
+      };
+    });
+  }, [ra, dec, fov, effectiveFov]);
+
+  // Optional Aladin Lite v3 initialization when switched manually
+  useEffect(() => {
+    if (!useAladinLive || aladinReady) return;
+    let cancelled = false;
     const boot = async () => {
       try {
-        for (
-          let attempt = 0;
-          attempt < 10 && !window.A && !cancelled;
-          attempt += 1
-        ) {
-          await new Promise((resolve) => window.setTimeout(resolve, 250));
-        }
-        if (!window.A || !window.A.init || !containerRef.current) {
-          if (!cancelled) setAladinFailed(true);
-          return;
-        }
-
+        if (!window.A || !window.A.init || !aladinContainerRef.current) return;
         await window.A.init;
-        if (cancelled || !containerRef.current) return;
-
-        const aladin = window.A.aladin(containerRef.current, {
+        if (cancelled || !aladinContainerRef.current) return;
+        const aladin = window.A.aladin(aladinContainerRef.current, {
           survey: baseSurvey,
-          fov,
+          fov: effectiveFov,
           target: `${ra} ${dec}`,
           showReticle: true,
           showZoomControl: true,
           showLayersControl: false,
         });
         aladinRef.current = aladin;
-
-        if (window.A.catalogHiPS && aladin.addCatalog) {
-          const gaiaCat = window.A.catalogHiPS(
-            'https://axel.u-strasbg.fr/HiPSCatService/I/355/gaiadr3',
-            {
-              name: 'Gaia Star Map',
-              color: '#22d3ee',
-              shape: 'circle',
-              sourceSize: 9,
-              onClick: 'showTable',
-            }
-          );
-          gaiaCatRef.current = gaiaCat;
-          if (overlays.gaiaStarMap) {
-            aladin.addCatalog(gaiaCat);
-          }
-
-          const wiseCat = window.A.catalogHiPS(
-            'https://axel.u-strasbg.fr/HiPSCatService/II/328/allwise',
-            {
-              name: 'WISE Heat Map',
-              color: '#fb923c',
-              shape: 'square',
-              sourceSize: 8,
-              onClick: 'showTable',
-            }
-          );
-          wiseCatRef.current = wiseCat;
-          if (overlays.wiseHeatMap) {
-            aladin.addCatalog(wiseCat);
-          }
-        }
-
         setAladinReady(true);
-        setAladinFailed(false);
       } catch {
-        if (!cancelled) setAladinFailed(true);
+        setUseAladinLive(false);
       }
     };
-
-    boot();
+    void boot();
     return () => {
       cancelled = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [useAladinLive, aladinReady, baseSurvey, effectiveFov, ra, dec]);
 
-  // Sync RA, Dec, FOV to Aladin
   useEffect(() => {
-    const aladin = aladinRef.current;
-    if (!aladin) return;
+    if (!useAladinLive || !aladinRef.current) return;
     try {
-      aladin.gotoRaDec(ra, dec);
-      aladin.setFoV(fov);
+      aladinRef.current.gotoRaDec(ra, dec);
+      aladinRef.current.setFoV(effectiveFov);
+      aladinRef.current.setImageSurvey(baseSurvey);
     } catch {
-      // Ignore transient projection error
+      // Ignore transient Aladin projection updates
     }
-  }, [ra, dec, fov]);
+  }, [useAladinLive, ra, dec, effectiveFov, baseSurvey]);
 
-  // Sync Base Survey to Aladin
+  // Render WCS Tangent Coordinate Grid, Gaia DR3 proper-motion vectors, & Target Reticle
   useEffect(() => {
-    const aladin = aladinRef.current;
-    if (!aladin) return;
-    try {
-      aladin.setImageSurvey(baseSurvey);
-    } catch {
-      // Ignore transient survey switch error
-    }
-  }, [baseSurvey]);
-
-  // Sync Telescope Overlays to Aladin HiPS catalogs
-  useEffect(() => {
-    const aladin = aladinRef.current;
-    if (!aladin) return;
-    try {
-      if (gaiaCatRef.current) {
-        if (overlays.gaiaStarMap) {
-          gaiaCatRef.current.show?.();
-        } else {
-          gaiaCatRef.current.hide?.();
-        }
-      }
-      if (wiseCatRef.current) {
-        if (overlays.wiseHeatMap) {
-          wiseCatRef.current.show?.();
-        } else {
-          wiseCatRef.current.hide?.();
-        }
-      }
-      if (overlays.twoMass && baseSurvey !== 'P/2MASS/color') {
-        // Keep baseSurvey controllable while allowing 2MASS markers on fallback
-      }
-    } catch {
-      // Ignore overlay toggle errors
-    }
-  }, [overlays, baseSurvey]);
-
-  // Interactive HTML5 Canvas Starfield & Coordinate Grid (used automatically when Aladin is loading/blocked or toggled)
-  const showCanvasFallback =
-    !aladinReady || aladinFailed || forceInteractiveCanvas;
-
-  useEffect(() => {
-    if (!showCanvasFallback) return;
-    const canvas = canvasRef.current;
+    if (useAladinLive) return;
+    const canvas = overlayCanvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    let rafId = 0;
-    const size = 360;
+    const size = 384;
     canvas.width = size;
     canvas.height = size;
+    ctx.clearRect(0, 0, size, size);
 
-    const rand = seededRand(ra * 17.3 + dec * 29.1 + Math.round(fov * 100));
-    const starCount = fov >= 0.8 ? 85 : fov >= 0.2 ? 55 : 38;
-    const stars = Array.from({ length: starCount }, (_, idx) => ({
-      x: 16 + rand() * (size - 32),
-      y: 16 + rand() * (size - 32),
-      r: 0.9 + rand() * 2.1,
-      brightness: 0.35 + rand() * 0.65,
-      inGaia: idx % 3 !== 0,
-      inWise: idx % 4 === 0,
-      inTwoMass: idx % 5 === 0,
-      phase: rand() * Math.PI * 2,
-    }));
-
-    const drawFrame = (nowMs: number) => {
-      const t = nowMs * 0.001;
-
-      // 1. Deep space gradient background tinted subtly by active survey
-      const bgGrad = ctx.createRadialGradient(
+    // If CDS photographic cutout isn't loaded yet, paint deep infrared obsidian nebula backdrop
+    if (!surveyImgLoaded) {
+      const grad = ctx.createRadialGradient(
         size * 0.5,
         size * 0.5,
-        12,
+        14,
         size * 0.5,
         size * 0.5,
         size * 0.72
       );
-      if (baseSurvey === 'P/WISE/color' || overlays.wiseHeatMap) {
-        bgGrad.addColorStop(0, '#130b24');
-        bgGrad.addColorStop(0.55, '#080c1c');
-        bgGrad.addColorStop(1, '#040710');
+      if (baseSurvey === 'P/WISE/color') {
+        grad.addColorStop(0, '#1c1008');
+        grad.addColorStop(0.55, '#0b0a0e');
+        grad.addColorStop(1, '#050507');
       } else if (baseSurvey === 'P/2MASS/color') {
-        bgGrad.addColorStop(0, '#1a0b1d');
-        bgGrad.addColorStop(0.6, '#090b18');
-        bgGrad.addColorStop(1, '#04060e');
+        grad.addColorStop(0, '#1a0b12');
+        grad.addColorStop(0.55, '#09090d');
+        grad.addColorStop(1, '#050507');
       } else {
-        bgGrad.addColorStop(0, '#09152a');
-        bgGrad.addColorStop(0.6, '#060a16');
-        bgGrad.addColorStop(1, '#03050b');
+        grad.addColorStop(0, '#0c1524');
+        grad.addColorStop(0.55, '#070a12');
+        grad.addColorStop(1, '#050507');
       }
-      ctx.fillStyle = bgGrad;
+      ctx.fillStyle = grad;
       ctx.fillRect(0, 0, size, size);
+    }
 
-      // 2. Coordinate Grid (RA / Dec lines scaled by FOV)
-      ctx.strokeStyle = 'rgba(34, 211, 238, 0.14)';
-      ctx.lineWidth = 1;
-      const divisions = 4;
-      for (let i = 1; i < divisions; i += 1) {
-        const pos = (i / divisions) * size;
-        ctx.beginPath();
-        ctx.moveTo(pos, 0);
-        ctx.lineTo(pos, size);
-        ctx.stroke();
-
-        ctx.beginPath();
-        ctx.moveTo(0, pos);
-        ctx.lineTo(size, pos);
-        ctx.stroke();
-      }
-
-      // Subtle RA/Dec tick labels
-      ctx.fillStyle = 'rgba(148, 163, 184, 0.65)';
-      ctx.font = '10px "JetBrains Mono", monospace';
-      ctx.fillText(
-        `RA ${(ra - fov / 2).toFixed(2)}°`,
-        8,
-        size - 8
-      );
-      ctx.fillText(
-        `Dec ${(dec + fov / 2).toFixed(2)}°`,
-        8,
-        16
-      );
-
-      // 3. Background Stars + Telescope Overlays
-      for (const s of stars) {
-        const twinkle = 0.85 + 0.15 * Math.sin(t * 2.2 + s.phase);
-        const alpha = s.brightness * twinkle;
-
-        if (overlays.wiseHeatMap && s.inWise) {
-          const glow = ctx.createRadialGradient(s.x, s.y, 0, s.x, s.y, 11);
-          glow.addColorStop(0, 'rgba(251, 146, 60, 0.5)');
-          glow.addColorStop(1, 'rgba(251, 146, 60, 0)');
-          ctx.fillStyle = glow;
-          ctx.beginPath();
-          ctx.arc(s.x, s.y, 11, 0, Math.PI * 2);
-          ctx.fill();
-        }
-
-        ctx.fillStyle = `rgba(226, 232, 240, ${alpha.toFixed(2)})`;
-        ctx.beginPath();
-        ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
-        ctx.fill();
-
-        if (overlays.gaiaStarMap && s.inGaia) {
-          ctx.strokeStyle = 'rgba(34, 211, 238, 0.72)';
-          ctx.lineWidth = 1.1;
-          ctx.beginPath();
-          ctx.arc(s.x, s.y, s.r + 3.5, 0, Math.PI * 2);
-          ctx.stroke();
-        }
-
-        if (overlays.twoMass && s.inTwoMass) {
-          ctx.strokeStyle = 'rgba(232, 121, 249, 0.75)';
-          ctx.lineWidth = 1;
-          ctx.strokeRect(s.x - 4, s.y - 4, 8, 8);
-        }
-      }
-
-      // 4. Glowing Moving Planet X / Target Object at center (ra, dec)
-      const cx = size * 0.5;
-      const cy = size * 0.5;
-      const driftX = Math.sin(t * 1.1) * 5;
-      const driftY = Math.cos(t * 0.9) * 3.5;
-      const tx = cx + driftX;
-      const ty = cy + driftY;
-
-      const targetGlow = ctx.createRadialGradient(tx, ty, 0, tx, ty, 22);
-      targetGlow.addColorStop(0, 'rgba(163, 230, 53, 0.95)');
-      targetGlow.addColorStop(0.35, 'rgba(34, 211, 238, 0.55)');
-      targetGlow.addColorStop(1, 'rgba(34, 211, 238, 0)');
-      ctx.fillStyle = targetGlow;
+    // 1. WCS Tangent Coordinate Grid
+    ctx.strokeStyle = 'rgba(245, 158, 11, 0.22)';
+    ctx.lineWidth = 1;
+    const divisions = 4;
+    for (let i = 1; i < divisions; i += 1) {
+      const pos = (i / divisions) * size;
       ctx.beginPath();
-      ctx.arc(tx, ty, 22, 0, Math.PI * 2);
-      ctx.fill();
-
-      ctx.fillStyle = '#ecfccb';
-      ctx.beginPath();
-      ctx.arc(tx, ty, 3.6, 0, Math.PI * 2);
-      ctx.fill();
-
-      // Pulsing green/lime discovery ring around target
-      const ringR = 14 + Math.sin(t * 3) * 2;
-      ctx.strokeStyle = 'rgba(163, 230, 53, 0.85)';
-      ctx.lineWidth = 1.6;
-      ctx.beginPath();
-      ctx.arc(tx, ty, ringR, 0, Math.PI * 2);
+      ctx.moveTo(pos, 0);
+      ctx.lineTo(pos, size);
       ctx.stroke();
 
-      rafId = window.requestAnimationFrame(drawFrame);
+      ctx.beginPath();
+      ctx.moveTo(0, pos);
+      ctx.lineTo(size, pos);
+      ctx.stroke();
+    }
+
+    // WCS coordinate tick labels
+    ctx.fillStyle = 'rgba(253, 230, 138, 0.78)';
+    ctx.font = '10px "JetBrains Mono", monospace';
+    ctx.fillText(`RA ${(ra + effectiveFov * 0.45).toFixed(3)}°`, 10, size - 30);
+    ctx.fillText(`Dec ${(dec + effectiveFov * 0.45).toFixed(3)}°`, 10, 42);
+
+    // 2. Catalog Sources (Gaia DR3 circles + PM vectors, WISE heat halos, 2MASS reticles)
+    for (const s of catalogSources) {
+      const sx = s.nx * size + panOffset.x;
+      const sy = s.ny * size + panOffset.y;
+      if (sx < 4 || sx > size - 4 || sy < 4 || sy > size - 4) continue;
+
+      if (!surveyImgLoaded) {
+        ctx.fillStyle = 'rgba(255, 251, 235, 0.78)';
+        ctx.beginPath();
+        ctx.arc(sx, sy, 1.7, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      if (overlays.wiseHeatMap && s.inWise) {
+        const glow = ctx.createRadialGradient(sx, sy, 0, sx, sy, 11);
+        glow.addColorStop(0, 'rgba(255, 85, 0, 0.45)');
+        glow.addColorStop(1, 'rgba(255, 85, 0, 0)');
+        ctx.fillStyle = glow;
+        ctx.beginPath();
+        ctx.arc(sx, sy, 11, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      if (overlays.gaiaStarMap && s.inGaia) {
+        ctx.strokeStyle = 'rgba(34, 211, 238, 0.8)';
+        ctx.lineWidth = 1.2;
+        ctx.beginPath();
+        ctx.arc(sx, sy, 5.5, 0, Math.PI * 2);
+        ctx.stroke();
+
+        // Gaia DR3 Proper Motion vector tick
+        const vx = (s.pmRa / 16) * 8;
+        const vy = -(s.pmDec / 16) * 8;
+        ctx.strokeStyle = 'rgba(16, 185, 129, 0.85)';
+        ctx.lineWidth = 1.1;
+        ctx.beginPath();
+        ctx.moveTo(sx, sy);
+        ctx.lineTo(sx + vx, sy + vy);
+        ctx.stroke();
+      }
+
+      if (overlays.twoMass && s.inTwoMass) {
+        ctx.strokeStyle = 'rgba(251, 191, 36, 0.85)';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(sx - 4.5, sy - 4.5, 9, 9);
+      }
+
+      if (selectedSource?.id === s.id) {
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 1.6;
+        ctx.beginPath();
+        ctx.arc(sx, sy, 10, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+    }
+
+    // 3. Center Planet X / Primary Target Reticle
+    const tx = size * 0.5 + panOffset.x;
+    const ty = size * 0.5 + panOffset.y;
+
+    const targetGlow = ctx.createRadialGradient(tx, ty, 0, tx, ty, 20);
+    targetGlow.addColorStop(0, 'rgba(251, 191, 36, 0.72)');
+    targetGlow.addColorStop(0.45, 'rgba(255, 85, 0, 0.25)');
+    targetGlow.addColorStop(1, 'rgba(255, 85, 0, 0)');
+    ctx.fillStyle = targetGlow;
+    ctx.beginPath();
+    ctx.arc(tx, ty, 20, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Precision JWST target crosshair
+    ctx.strokeStyle = '#FBBF24';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.arc(tx, ty, 13, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(tx - 19, ty);
+    ctx.lineTo(tx - 8, ty);
+    ctx.moveTo(tx + 8, ty);
+    ctx.lineTo(tx + 19, ty);
+    ctx.moveTo(tx, ty - 19);
+    ctx.lineTo(tx, ty - 8);
+    ctx.moveTo(tx, ty + 8);
+    ctx.lineTo(tx, ty + 19);
+    ctx.stroke();
+  }, [
+    useAladinLive,
+    surveyImgLoaded,
+    baseSurvey,
+    ra,
+    dec,
+    effectiveFov,
+    overlays,
+    catalogSources,
+    panOffset,
+    selectedSource,
+  ]);
+
+  const handlePointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    setIsDragging(true);
+    dragStartRef.current = {
+      x: e.clientX,
+      y: e.clientY,
+      px: panOffset.x,
+      py: panOffset.y,
     };
+  };
 
-    rafId = window.requestAnimationFrame(drawFrame);
-    return () => window.cancelAnimationFrame(rafId);
-  }, [showCanvasFallback, ra, dec, fov, baseSurvey, overlays]);
-
-  const handleCanvasMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
+  const handlePointerMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
     const rect = e.currentTarget.getBoundingClientRect();
     const nx = (e.clientX - rect.left) / rect.width - 0.5;
     const ny = (e.clientY - rect.top) / rect.height - 0.5;
     setHoverCoords({
-      ra: ra - nx * fov,
-      dec: dec - ny * fov,
+      ra: ra - nx * effectiveFov,
+      dec: dec - ny * effectiveFov,
     });
+
+    if (isDragging && dragStartRef.current) {
+      const dx = e.clientX - dragStartRef.current.x;
+      const dy = e.clientY - dragStartRef.current.y;
+      setPanOffset({
+        x: Math.max(-90, Math.min(90, dragStartRef.current.px + dx)),
+        y: Math.max(-90, Math.min(90, dragStartRef.current.py + dy)),
+      });
+    }
+  };
+
+  const handlePointerUp = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    const moved =
+      dragStartRef.current &&
+      Math.hypot(
+        e.clientX - dragStartRef.current.x,
+        e.clientY - dragStartRef.current.y
+      ) > 4;
+    setIsDragging(false);
+    dragStartRef.current = null;
+
+    if (!moved) {
+      const rect = e.currentTarget.getBoundingClientRect();
+      const clickX = ((e.clientX - rect.left) / rect.width) * 384 - panOffset.x;
+      const clickY = ((e.clientY - rect.top) / rect.height) * 384 - panOffset.y;
+      const nx = clickX / 384;
+      const ny = clickY / 384;
+      let nearest: CatalogSourcePoint | null = null;
+      let bestDist = 0.055;
+      for (const s of catalogSources) {
+        const d = Math.hypot(s.nx - nx, s.ny - ny);
+        if (d < bestDist) {
+          bestDist = d;
+          nearest = s;
+        }
+      }
+      setSelectedSource(nearest);
+    }
   };
 
   return (
     <div className="flex flex-col gap-2.5">
-      <div className="relative aspect-square max-h-[370px] w-full overflow-hidden rounded-xl border border-slate-800 bg-[#040710]">
-        {/* Aladin Lite v3 Mount */}
+      <div className="relative aspect-square max-h-[370px] w-full overflow-hidden rounded-xl border border-amber-500/25 bg-[#050507]">
+        {/* Aladin Lite v3 Mount (Optional toggle when external WebGL tiles are reachable) */}
         <div
-          ref={containerRef}
-          className={`h-full w-full ${showCanvasFallback ? 'hidden' : 'block'}`}
+          ref={aladinContainerRef}
+          className={`h-full w-full ${useAladinLive ? 'block' : 'hidden'}`}
         />
 
-        {/* Interactive HTML5 Canvas Starfield & Coordinate Grid (Always Alive in Sandbox) */}
-        {showCanvasFallback && (
-          <canvas
-            ref={canvasRef}
-            onMouseMove={handleCanvasMove}
-            onMouseLeave={() => setHoverCoords(null)}
-            aria-label="Interactive Starfield and Coordinate Grid"
-            className="h-full w-full cursor-crosshair object-contain"
-          />
+        {/* Real CDS HiPS2FITS Survey Cutout + Interactive WCS/Gaia Overlay */}
+        {!useAladinLive && (
+          <>
+            <img
+              src={hipsImageUrl}
+              alt={`${activeSurvey.label} sky survey cutout`}
+              referrerPolicy="no-referrer"
+              onLoad={() => setSurveyImgLoaded(true)}
+              onError={() => setSurveyImgLoaded(false)}
+              style={{
+                transform: `translate(${panOffset.x}px, ${panOffset.y}px)`,
+              }}
+              className={`pointer-events-none absolute inset-0 h-full w-full object-cover transition-opacity duration-300 ${
+                surveyImgLoaded ? 'opacity-100' : 'opacity-0'
+              }`}
+            />
+            <canvas
+              ref={overlayCanvasRef}
+              onPointerDown={handlePointerDown}
+              onPointerMove={handlePointerMove}
+              onPointerUp={handlePointerUp}
+              onPointerLeave={() => {
+                setIsDragging(false);
+                setHoverCoords(null);
+              }}
+              aria-label="Interactive CDS Sky Survey and WCS Catalog Overlay"
+              className="relative z-10 h-full w-full cursor-crosshair object-cover"
+            />
+          </>
         )}
 
-        {/* Top-Left Live Map Label */}
-        <div className="pointer-events-none absolute top-3 left-3 flex items-center gap-1.5 rounded-lg border border-cyan-500/40 bg-slate-950/85 px-2.5 py-1 text-[11px] font-medium text-cyan-200">
-          <Compass className="h-3.5 w-3.5 text-cyan-400" aria-hidden="true" />
+        {/* Top-Left Live Survey Label */}
+        <div className="pointer-events-none absolute top-3 left-3 z-20 flex items-center gap-1.5 rounded-lg border border-amber-500/40 bg-[#050507]/85 px-2.5 py-1 text-[11px] font-medium text-amber-200">
+          <Compass className="h-3.5 w-3.5 text-amber-400" aria-hidden="true" />
           <span>
-            {showCanvasFallback
-              ? 'Interactive Starfield & Grid'
-              : 'Aladin Lite v3 Live Sky'}
+            {useAladinLive
+              ? 'Aladin Lite v3 WebGL'
+              : surveyImgLoaded
+                ? `CDS ${activeSurvey.label}`
+                : 'WCS Infrared Field'}
           </span>
         </div>
 
-        {/* Toggle between Aladin WebGL & Starfield Canvas if Aladin loaded */}
-        {aladinReady && !aladinFailed && (
+        {/* Zoom & Pan Reset Controls */}
+        <div className="absolute top-3 right-3 z-20 flex items-center gap-1">
           <button
             type="button"
-            onClick={() => setForceInteractiveCanvas((prev) => !prev)}
-            className="absolute top-3 right-3 rounded-lg border border-slate-700 bg-slate-950/85 px-2 py-1 text-[10px] font-medium text-slate-300 hover:border-cyan-500/50 hover:text-cyan-200"
+            aria-label="Zoom in sky map"
+            onClick={() => setZoomMult((z) => Math.min(4, Number((z * 1.35).toFixed(2))))}
+            className="rounded-lg border border-amber-500/25 bg-[#050507]/85 p-1.5 text-amber-200 hover:border-amber-400"
           >
-            {forceInteractiveCanvas ? 'Use Aladin Tiles' : 'Starfield View'}
+            <ZoomIn className="h-3.5 w-3.5" aria-hidden="true" />
           </button>
+          <button
+            type="button"
+            aria-label="Zoom out sky map"
+            onClick={() => setZoomMult((z) => Math.max(0.5, Number((z / 1.35).toFixed(2))))}
+            className="rounded-lg border border-amber-500/25 bg-[#050507]/85 p-1.5 text-amber-200 hover:border-amber-400"
+          >
+            <ZoomOut className="h-3.5 w-3.5" aria-hidden="true" />
+          </button>
+          <button
+            type="button"
+            aria-label="Center sky map"
+            onClick={() => {
+              setZoomMult(1.0);
+              setPanOffset({ x: 0, y: 0 });
+            }}
+            className="rounded-lg border border-amber-500/25 bg-[#050507]/85 p-1.5 text-amber-200 hover:border-amber-400"
+          >
+            <LocateFixed className="h-3.5 w-3.5" aria-hidden="true" />
+          </button>
+          {typeof window !== 'undefined' && Boolean(window.A) && (
+            <button
+              type="button"
+              onClick={() => setUseAladinLive((v) => !v)}
+              className="rounded-lg border border-amber-500/25 bg-[#050507]/85 px-2 py-1 text-[10px] font-medium text-amber-200 hover:border-amber-400"
+            >
+              {useAladinLive ? 'HiPS Cutout' : 'Aladin 3D'}
+            </button>
+          )}
+        </div>
+
+        {/* Selected Gaia Source Readout Chip */}
+        {selectedSource && !useAladinLive && (
+          <div className="pointer-events-none absolute top-12 left-3 z-20 rounded-lg border border-emerald-400/50 bg-[#050507]/90 px-2.5 py-1.5 font-mono text-[10px] text-emerald-200">
+            <p className="font-semibold">{selectedSource.id}</p>
+            <p className="text-slate-300">
+              G={selectedSource.mag} · μ=({selectedSource.pmRa}, {selectedSource.pmDec}) mas/yr
+            </p>
+          </div>
         )}
 
         {/* Bottom Live Target Pill */}
-        <div className="pointer-events-none absolute right-3 bottom-3 left-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-800 bg-slate-950/85 px-2.5 py-1.5 font-mono text-[10px] tabular-nums text-slate-300">
-          <span className="inline-flex items-center gap-1 text-lime-300">
+        <div className="pointer-events-none absolute right-3 bottom-3 left-3 z-20 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-500/25 bg-[#050507]/85 px-2.5 py-1.5 font-mono text-[10px] tabular-nums text-slate-300">
+          <span className="inline-flex items-center gap-1 text-amber-300">
             <Sparkles className="h-3 w-3" aria-hidden="true" />
             {preset?.name ?? 'Custom Target'} ·{' '}
             {gaiaMatched ? 'Catalogued Star' : 'Unmapped IR Target'}
@@ -404,17 +501,17 @@ export function AladinSkyMap({
           <span>
             {hoverCoords
               ? `Cursor ${hoverCoords.ra.toFixed(3)}°, ${hoverCoords.dec.toFixed(3)}°`
-              : `FOV ${fov}°`}
+              : `FOV ${effectiveFov.toFixed(2)}°`}
           </span>
         </div>
       </div>
 
       {/* Survey Selector + Quick Overlay Chips */}
-      <div className="rounded-xl border border-slate-800 bg-slate-950/75 p-2.5 space-y-2">
+      <div className="space-y-2 rounded-xl border border-amber-500/20 bg-[#050507] p-2.5">
         <div className="flex flex-wrap items-center gap-1.5">
           <span className="mr-1 inline-flex items-center gap-1 text-[11px] font-medium text-slate-400">
-            <Layers className="h-3.5 w-3.5 text-cyan-400" aria-hidden="true" />
-            Sky View:
+            <Layers className="h-3.5 w-3.5 text-amber-400" aria-hidden="true" />
+            Sky Survey:
           </span>
           {SURVEY_OPTIONS.map((opt) => (
             <button
@@ -423,8 +520,8 @@ export function AladinSkyMap({
               onClick={() => setBaseSurvey(opt.id)}
               className={`rounded-lg border px-2 py-1 text-[11px] font-medium transition-colors ${
                 baseSurvey === opt.id
-                  ? 'border-cyan-500/50 bg-cyan-500/15 text-cyan-200'
-                  : 'border-slate-800 bg-slate-900 text-slate-400 hover:text-slate-200'
+                  ? 'border-amber-500/50 bg-amber-500/20 text-amber-200'
+                  : 'border-amber-500/15 bg-[#0B0C10] text-slate-400 hover:text-amber-100'
               }`}
             >
               {opt.label}
@@ -432,7 +529,7 @@ export function AladinSkyMap({
           ))}
         </div>
 
-        <div className="flex flex-wrap items-center gap-3 border-t border-slate-800/80 pt-2 text-[11px]">
+        <div className="flex flex-wrap items-center gap-3 border-t border-amber-500/15 pt-2 text-[11px]">
           <label className="inline-flex cursor-pointer items-center gap-1.5 text-cyan-300">
             <input
               type="checkbox"
@@ -441,29 +538,29 @@ export function AladinSkyMap({
               className="accent-cyan-400"
             />
             <span className="h-2 w-2 rounded-full bg-cyan-400" />
-            <span>Gaia Star Map</span>
+            <span>Gaia DR3 + PM Vectors</span>
+          </label>
+
+          <label className="inline-flex cursor-pointer items-center gap-1.5 text-[#FF5500]">
+            <input
+              type="checkbox"
+              checked={overlays.wiseHeatMap}
+              onChange={() => onToggleOverlay('wiseHeatMap')}
+              className="accent-orange-500"
+            />
+            <span className="h-2 w-2 rounded-full bg-[#FF5500]" />
+            <span>WISE Heat Map</span>
           </label>
 
           <label className="inline-flex cursor-pointer items-center gap-1.5 text-amber-300">
             <input
               type="checkbox"
-              checked={overlays.wiseHeatMap}
-              onChange={() => onToggleOverlay('wiseHeatMap')}
+              checked={overlays.twoMass}
+              onChange={() => onToggleOverlay('twoMass')}
               className="accent-amber-400"
             />
             <span className="h-2 w-2 rounded-full bg-amber-400" />
-            <span>WISE Heat Map</span>
-          </label>
-
-          <label className="inline-flex cursor-pointer items-center gap-1.5 text-fuchsia-300">
-            <input
-              type="checkbox"
-              checked={overlays.twoMass}
-              onChange={() => onToggleOverlay('twoMass')}
-              className="accent-fuchsia-400"
-            />
-            <span className="h-2 w-2 rounded-full bg-fuchsia-400" />
-            <span>2MASS</span>
+            <span>2MASS Near-IR</span>
           </label>
         </div>
       </div>

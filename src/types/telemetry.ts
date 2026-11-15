@@ -39,11 +39,20 @@ export interface VisualAssets {
   present_frame_base64: string;
   cnn_dashboard_base64?: string;
   timemachine_dashboard_base64?: string;
+  epoch1?: number[][];
+  epoch2?: number[][];
 }
 
 export interface SourceDetectionInfo {
   total_sources_found: number;
   crossmatch_mode: string;
+}
+
+export interface PhotometryMetrics {
+  snr?: number;
+  surface_brightness_mjy_sr?: number;
+  gaia_residual_arcsec?: number;
+  wcs_projection?: string;
 }
 
 export interface ScanResponse {
@@ -52,6 +61,9 @@ export interface ScanResponse {
   fov_deg?: number;
   metadata_flags?: MetadataFlags;
   source_detection?: SourceDetectionInfo;
+  photometry?: PhotometryMetrics;
+  epoch1?: number[][];
+  epoch2?: number[][];
   coordinates: Coordinates;
   ai_verdicts: AiVerdicts;
   wavelengths: number[];

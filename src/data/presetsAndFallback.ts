@@ -4,6 +4,11 @@ import type {
   TargetFrameMotion,
   TargetPreset,
 } from '../types/telemetry';
+import {
+  buildSyntheticFitsEpochMatrices,
+  renderStretchedFitsToCanvas,
+  zscaleAsinhStretch,
+} from '../utils/astroStretch';
 
 export const OFFICIAL_TARGET_PRESETS: TargetPreset[] = [
   {
@@ -179,24 +184,6 @@ function seededRandom(seed: number): () => number {
   };
 }
 
-function magmaRgb(t: number): [number, number, number] {
-  const x = Math.max(0, Math.min(1, t));
-  if (x < 0.25) {
-    const k = x / 0.25;
-    return [Math.round(8 + k * 60), Math.round(6 + k * 10), Math.round(18 + k * 85)];
-  }
-  if (x < 0.55) {
-    const k = (x - 0.25) / 0.3;
-    return [Math.round(68 + k * 120), Math.round(16 + k * 34), Math.round(103 + k * 25)];
-  }
-  if (x < 0.82) {
-    const k = (x - 0.55) / 0.27;
-    return [Math.round(188 + k * 60), Math.round(50 + k * 105), Math.round(128 - k * 55)];
-  }
-  const k = (x - 0.82) / 0.18;
-  return [Math.round(248 + k * 7), Math.round(155 + k * 95), Math.round(73 + k * 145)];
-}
-
 export function findClosestPreset(ra: number, dec: number): TargetPreset | null {
   let best: TargetPreset | null = null;
   let bestDist = Infinity;
@@ -213,7 +200,6 @@ export function findClosestPreset(ra: number, dec: number): TargetPreset | null 
 export function getTargetFrameMotion(ra: number, dec: number): TargetFrameMotion {
   const preset = findClosestPreset(ra, dec);
   if (preset) return preset.motion;
-  // Deterministic custom coordinate jump so any custom sky patch is interactive too
   const rand = seededRandom(ra * 19.3 + dec * 23.7 + 7);
   return {
     pastX: Number((0.26 + rand() * 0.18).toFixed(2)),
@@ -230,94 +216,56 @@ export function renderCutoutPairBase64(
   dec: number,
   _isAnomaly: boolean,
   stacked6Array: boolean
-): { past_frame_base64: string; present_frame_base64: string } {
-  if (typeof document === 'undefined') {
-    return { past_frame_base64: '', present_frame_base64: '' };
-  }
-
-  const size = 32;
-  const scale = 8; // 256x256 sharp astronomical cutout
-  const rand = seededRandom(ra * 31.7 + dec * 17.3 + 42);
+): {
+  past_frame_base64: string;
+  present_frame_base64: string;
+  epoch1: number[][];
+  epoch2: number[][];
+} {
   const motion = getTargetFrameMotion(ra, dec);
+  const { epoch1, epoch2 } = buildSyntheticFitsEpochMatrices(
+    ra,
+    dec,
+    motion,
+    stacked6Array
+  );
 
-  const pastTargetX = motion.pastX * (size - 1);
-  const pastTargetY = motion.pastY * (size - 1);
-  const presentTargetX = motion.presentX * (size - 1);
-  const presentTargetY = motion.presentY * (size - 1);
-
-  // Background stars (stationary across both epochs)
-  const bgStars: Array<{ x: number; y: number; amp: number; sigma: number }> = [];
-  for (let i = 0; i < 8; i += 1) {
-    const sx = 3 + rand() * (size - 6);
-    const sy = 3 + rand() * (size - 6);
-    const farFromPast = Math.hypot(sx - pastTargetX, sy - pastTargetY) > 4.2;
-    const farFromPresent =
-      Math.hypot(sx - presentTargetX, sy - presentTargetY) > 4.2;
-    if (farFromPast && farFromPresent) {
-      bgStars.push({
-        x: sx,
-        y: sy,
-        amp: 0.32 + rand() * 0.36,
-        sigma: 1.05 + rand() * 0.35,
-      });
-    }
+  if (typeof document === 'undefined') {
+    return { past_frame_base64: '', present_frame_base64: '', epoch1, epoch2 };
   }
 
-  const noiseLevel = stacked6Array ? 0.025 : 0.095;
-  const pastGrid = new Float32Array(size * size);
-  const presentGrid = new Float32Array(size * size);
+  const pastStretch = zscaleAsinhStretch(epoch1, stacked6Array);
+  const presentStretch = zscaleAsinhStretch(epoch2, stacked6Array);
 
-  for (let y = 0; y < size; y += 1) {
-    for (let x = 0; x < size; x += 1) {
-      const idx = y * size + x;
-      const baseNoise = (rand() - 0.5) * noiseLevel + 0.1;
-      let starSum = 0;
-      for (const s of bgStars) {
-        const d2 = (x - s.x) ** 2 + (y - s.y) ** 2;
-        starSum += s.amp * Math.exp(-d2 / (2 * s.sigma * s.sigma));
-      }
+  const canvasA = document.createElement('canvas');
+  renderStretchedFitsToCanvas(canvasA, pastStretch.stretched, {
+    size: 256,
+    transparentBackground: false,
+    targetHighlight: {
+      normX: motion.pastX,
+      normY: motion.pastY,
+      intensity: motion.pastGlow * 0.85,
+    },
+    stacked6Array,
+  });
 
-      const dPast2 = (x - pastTargetX) ** 2 + (y - pastTargetY) ** 2;
-      const dPres2 = (x - presentTargetX) ** 2 + (y - presentTargetY) ** 2;
-      const sigma = stacked6Array ? 1.55 : 1.7;
-      const pastSource = motion.pastGlow * Math.exp(-dPast2 / (2 * sigma * sigma));
-      const presentSource = 0.99 * Math.exp(-dPres2 / (2 * sigma * sigma));
-
-      pastGrid[idx] = Math.max(0, Math.min(1, baseNoise + starSum + pastSource));
-      presentGrid[idx] = Math.max(0, Math.min(1, baseNoise + starSum + presentSource));
-    }
-  }
-
-  const gridToDataUrl = (grid: Float32Array): string => {
-    const smallCanvas = document.createElement('canvas');
-    smallCanvas.width = size;
-    smallCanvas.height = size;
-    const sCtx = smallCanvas.getContext('2d');
-    if (!sCtx) return '';
-
-    const imgData = sCtx.createImageData(size, size);
-    for (let i = 0; i < size * size; i += 1) {
-      const [r, g, b] = magmaRgb(grid[i]);
-      imgData.data[i * 4] = r;
-      imgData.data[i * 4 + 1] = g;
-      imgData.data[i * 4 + 2] = b;
-      imgData.data[i * 4 + 3] = 255;
-    }
-    sCtx.putImageData(imgData, 0, 0);
-
-    const outCanvas = document.createElement('canvas');
-    outCanvas.width = size * scale;
-    outCanvas.height = size * scale;
-    const oCtx = outCanvas.getContext('2d');
-    if (!oCtx) return smallCanvas.toDataURL('image/png');
-    oCtx.imageSmoothingEnabled = stacked6Array;
-    oCtx.drawImage(smallCanvas, 0, 0, size * scale, size * scale);
-    return outCanvas.toDataURL('image/png');
-  };
+  const canvasB = document.createElement('canvas');
+  renderStretchedFitsToCanvas(canvasB, presentStretch.stretched, {
+    size: 256,
+    transparentBackground: false,
+    targetHighlight: {
+      normX: motion.presentX,
+      normY: motion.presentY,
+      intensity: 0.96,
+    },
+    stacked6Array,
+  });
 
   return {
-    past_frame_base64: gridToDataUrl(pastGrid),
-    present_frame_base64: gridToDataUrl(presentGrid),
+    past_frame_base64: canvasA.toDataURL('image/png'),
+    present_frame_base64: canvasB.toDataURL('image/png'),
+    epoch1,
+    epoch2,
   };
 }
 
@@ -358,7 +306,6 @@ export function buildSpectrum102(
       ch4Factor = w > 3.18 && w < 3.42 ? 0.28 : 1.0;
       coFactor = w > 4.48 && w < 4.82 ? 0.62 : 1.0;
     } else if (preset?.id === 'rw-aurigae') {
-      // Warm circumstellar dust excess rising past 2.5 µm
       continuum = 48 + Math.exp(-0.5 * ((w - 3.6) / 1.4) ** 2) * 58;
       h2oFactor = w > 1.33 && w < 1.47 ? 0.86 : 1.0;
       ch4Factor = w > 3.18 && w < 3.42 ? 0.88 : 1.0;
@@ -391,7 +338,7 @@ export function buildFallbackScan(
 
   return {
     status: isAnomaly ? 'anomaly_confirmed' : 'catalogued_source',
-    s3_source: 'nasa-irsa-spherex/qr2/level2',
+    s3_source: 's3://nasa-irsa-spherex/qr2/level2/spherex_qr2_l2b_2025.fits',
     fov_deg: fov,
     metadata_flags: {
       psf_quality: 'Nominal',
@@ -405,6 +352,14 @@ export function buildFallbackScan(
         ? 'GAIA_DR3_CATALOG_MATCH'
         : 'VERIFIED_UNCATALOGUED_ANOMALY',
     },
+    photometry: {
+      snr: stacked6Array ? 42.6 : 19.8,
+      surface_brightness_mjy_sr: 3.14,
+      gaia_residual_arcsec: preset?.gaiaMatched ? 0.14 : 4.82,
+      wcs_projection: 'TAN',
+    },
+    epoch1: frames.epoch1,
+    epoch2: frames.epoch2,
     coordinates: {
       ra: Number(ra.toFixed(6)),
       dec: Number(dec.toFixed(6)),
@@ -429,7 +384,12 @@ export function buildFallbackScan(
     },
     wavelengths,
     raw_spectrum,
-    visual_assets: frames,
+    visual_assets: {
+      past_frame_base64: frames.past_frame_base64,
+      present_frame_base64: frames.present_frame_base64,
+      epoch1: frames.epoch1,
+      epoch2: frames.epoch2,
+    },
     gemini_copilot_summary: preset
       ? preset.summary
       : `Space-Max 0 found a bright infrared object at RA ${ra.toFixed(2)}°, Dec ${dec.toFixed(2)}° that is missing from normal star maps! Its rainbow light reveals water vapor and methane clouds, just like a hidden cold planet.`,

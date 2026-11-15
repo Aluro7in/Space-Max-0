@@ -26,24 +26,50 @@ const DEFAULT_RA = 166.33243;
 const DEFAULT_DEC = 29.940572;
 const DEFAULT_FOV = 0.15;
 
-const BACKEND_URL_STORAGE_KEY = 'space_max_0_backend_url';
+export const DEFAULT_BACKEND_URL =
+  ((import.meta.env.VITE_PYTHON_API_URL as string | undefined) || '')
+    .trim()
+    .replace(/\/+$/, '') || 'https://space-max-0-backend.onrender.com';
+
+const BACKEND_URL_STORAGE_KEY = 'spacemax_backend_url';
+const LEGACY_BACKEND_URL_STORAGE_KEY = 'space_max_0_backend_url';
 const SCAN_HISTORY_STORAGE_KEY = 'space_max_0_scan_history';
 const MAX_HISTORY_ENTRIES = 15;
 
 function normalizeBackendUrl(rawUrl: string): string {
   const cleaned = rawUrl.trim().replace(/\/+$/, '');
-  return cleaned || 'http://localhost:8000';
+  if (
+    !cleaned ||
+    cleaned.includes('localhost') ||
+    cleaned.includes('127.0.0.1')
+  ) {
+    return DEFAULT_BACKEND_URL;
+  }
+  return cleaned;
 }
 
-function getDefaultBackendUrl(): string {
-  const envUrl = import.meta.env.VITE_PYTHON_API_URL as string | undefined;
-  if (typeof window !== 'undefined') {
+function getInitialBackendUrl(): string {
+  if (typeof window === 'undefined') return DEFAULT_BACKEND_URL;
+  try {
+    const legacy = window.localStorage.getItem(LEGACY_BACKEND_URL_STORAGE_KEY);
+    if (legacy && (legacy.includes('localhost') || legacy.includes('127.0.0.1'))) {
+      window.localStorage.removeItem(LEGACY_BACKEND_URL_STORAGE_KEY);
+    }
+
     const saved = window.localStorage.getItem(BACKEND_URL_STORAGE_KEY);
-    if (saved && saved.trim()) return normalizeBackendUrl(saved);
+    if (
+      !saved ||
+      !saved.trim() ||
+      saved.includes('localhost') ||
+      saved.includes('127.0.0.1')
+    ) {
+      window.localStorage.setItem(BACKEND_URL_STORAGE_KEY, DEFAULT_BACKEND_URL);
+      return DEFAULT_BACKEND_URL;
+    }
+    return normalizeBackendUrl(saved);
+  } catch {
+    return DEFAULT_BACKEND_URL;
   }
-  return envUrl && envUrl.trim()
-    ? normalizeBackendUrl(envUrl)
-    : 'http://localhost:8000';
 }
 
 function readInitialQueryCoords(): { ra: number; dec: number; fov: number } {
@@ -124,13 +150,12 @@ export default function App() {
   const [sliceIndex, setSliceIndex] = useState<number>(24);
 
   const [backendUrl, setBackendUrl] = useState<string>(() =>
-    getDefaultBackendUrl()
+    getInitialBackendUrl()
   );
   const [backendMode, setBackendMode] =
     useState<BackendConnectionMode>('checking');
   const [isScanning, setIsScanning] = useState<boolean>(false);
 
-  // Instant-boot hydration with verified SPHEREx QR2 target
   const [scanData, setScanData] = useState<ScanResponse>(() =>
     buildFallbackScan(
       initial.current.ra,
@@ -506,11 +531,21 @@ export default function App() {
     return arr[clamped];
   }, [datacube.wavelengths, scanData.wavelengths, sliceIndex]);
 
+  const activeDatacubeSlice = useMemo(() => {
+    const vol = datacube.volume_data;
+    if (!vol.length) return undefined;
+    const idx = Math.max(0, Math.min(vol.length - 1, sliceIndex));
+    return vol[idx];
+  }, [datacube.volume_data, sliceIndex]);
+
+  const epoch1Matrix = scanData.epoch1 ?? scanData.visual_assets.epoch1;
+  const epoch2Matrix = scanData.epoch2 ?? scanData.visual_assets.epoch2;
+
   return (
-    <div className="flex min-h-screen flex-col bg-[#060913] text-slate-100">
+    <div className="flex min-h-screen flex-col bg-[#050507] text-[#F8FAFC]">
       <div
         aria-hidden="true"
-        className="pointer-events-none fixed inset-0 bg-[radial-gradient(ellipse_at_top,_rgba(34,211,238,0.08),transparent_60%)]"
+        className="pointer-events-none fixed inset-0 bg-[radial-gradient(ellipse_at_top,_rgba(245,158,11,0.065),transparent_58%)]"
       />
 
       {/* Top Command & Coordinate Bar */}
@@ -538,6 +573,13 @@ export default function App() {
           fov={fov}
           pastFrameBase64={scanData.visual_assets.past_frame_base64}
           presentFrameBase64={scanData.visual_assets.present_frame_base64}
+          epoch1Matrix={epoch1Matrix}
+          epoch2Matrix={epoch2Matrix}
+          datacubeSlice={activeDatacubeSlice}
+          s3Source={scanData.s3_source}
+          sourceCount={scanData.source_detection?.total_sources_found}
+          photometry={scanData.photometry}
+          properMotion={scanData.ai_verdicts.proper_motion}
           stacked6Array={stacked6Array}
           gaiaMatched={gaiaMatched}
           onToggleStack6={handleToggleStack6}
@@ -546,10 +588,10 @@ export default function App() {
         {/* Center Column (4 Cols): Step 2: 3D Light Cube & Rainbow Fingerprint */}
         <section
           aria-label="Step 2: 3D Light Cube and Rainbow Fingerprint"
-          className="flex flex-col justify-between gap-4 rounded-2xl border border-slate-800/80 bg-slate-900/60 p-4 backdrop-blur-md lg:col-span-4"
+          className="flex flex-col justify-between gap-4 rounded-2xl border border-amber-500/20 bg-[#0B0C10]/90 p-4 backdrop-blur-md lg:col-span-4"
         >
           <div>
-            <h2 className="text-sm font-bold text-white">
+            <h2 className="text-sm font-bold text-[#F8FAFC]">
               Step 2: 3D Light Cube &amp; Rainbow Fingerprint
             </h2>
             <p className="text-[11px] text-slate-400">

@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { Box, Orbit, RotateCcw, SlidersHorizontal } from 'lucide-react';
 import type { DatacubeResponse } from '../types/telemetry';
+import { jwstThermalRgbFloat } from '../utils/astroStretch';
 
 interface WebGLDataCube3DProps {
   datacube: DatacubeResponse;
@@ -69,17 +70,7 @@ function createPointSpriteTexture(): THREE.CanvasTexture {
 }
 
 function fluxColor(norm: number): [number, number, number] {
-  const t = Math.max(0, Math.min(1, norm));
-  if (t < 0.35) {
-    const k = t / 0.35;
-    return [0.14 + k * 0.45, 0.08 + k * 0.22, 0.48 + k * 0.38];
-  }
-  if (t < 0.72) {
-    const k = (t - 0.35) / 0.37;
-    return [0.59 + k * 0.38, 0.3 + k * 0.25, 0.86 - k * 0.44];
-  }
-  const k = (t - 0.72) / 0.28;
-  return [0.2 + k * 0.8, 0.88 + k * 0.12, 0.96 + k * 0.04];
+  return jwstThermalRgbFloat(norm);
 }
 
 function getBandFeatureHint(um: number): string {
@@ -158,7 +149,7 @@ export function WebGLDataCube3D({
     container.appendChild(renderer.domElement);
 
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color('#040710');
+    scene.background = new THREE.Color('#050507');
 
     const camera = new THREE.PerspectiveCamera(42, width / height, 0.1, 60);
     camera.position.copy(DEFAULT_CAMERA_POS);
@@ -179,26 +170,26 @@ export function WebGLDataCube3D({
     scene.add(cubeGroup);
     scene.add(gaiaGroup);
 
-    // Wireframe bounding box for Spectral Cube
+    // Wireframe bounding box for Spectral Cube (Warm Titanium)
     const boxGeo = new THREE.BoxGeometry(CUBE_XY, CUBE_XY, CUBE_Z);
     const edgesGeo = new THREE.EdgesGeometry(boxGeo);
     const edgesMat = new THREE.LineBasicMaterial({
-      color: 0x1e3a5f,
+      color: 0x78350f,
       transparent: true,
-      opacity: 0.75,
+      opacity: 0.8,
     });
     cubeGroup.add(new THREE.LineSegments(edgesGeo, edgesMat));
     boxGeo.dispose();
 
-    const gridHelper = new THREE.GridHelper(CUBE_XY, 8, 0x0e7490, 0x0f172a);
+    const gridHelper = new THREE.GridHelper(CUBE_XY, 8, 0xb45309, 0x1c1917);
     gridHelper.position.y = -CUBE_XY / 2;
     cubeGroup.add(gridHelper);
 
-    // Movable Cyan Z-Slice Plane
+    // Movable Infrared Solar Gold Z-Slice Plane
     const sliceGroup = new THREE.Group();
     const planeGeo = new THREE.PlaneGeometry(CUBE_XY * 1.02, CUBE_XY * 1.02);
     const planeMat = new THREE.MeshBasicMaterial({
-      color: 0x22d3ee,
+      color: 0xf59e0b,
       transparent: true,
       opacity: 0.14,
       side: THREE.DoubleSide,
@@ -214,15 +205,15 @@ export function WebGLDataCube3D({
       new THREE.Vector3(-half, half, 0),
     ]);
     const loopMat = new THREE.LineBasicMaterial({
-      color: 0x22d3ee,
+      color: 0xfbbf24,
       transparent: true,
-      opacity: 0.9,
+      opacity: 0.92,
     });
     sliceGroup.add(new THREE.LineLoop(loopGeo, loopMat));
     cubeGroup.add(sliceGroup);
 
     // Subtle spatial reference grid for Gaia 3D Starfield
-    const starGrid = new THREE.GridHelper(4.4, 8, 0x0e7490, 0x0f172a);
+    const starGrid = new THREE.GridHelper(4.4, 8, 0xb45309, 0x1c1917);
     starGrid.position.y = -1.8;
     gaiaGroup.add(starGrid);
 
@@ -557,9 +548,9 @@ export function WebGLDataCube3D({
           baseZ: sz,
           tiltAmp: 0.12 + (idx % 4) * 0.03,
           tiltPhase: (idx * 0.71 + Math.abs(pmDecVal) * 0.05) % (Math.PI * 2),
-          colorR: 0.34 * f,
-          colorG: 0.82 * f,
-          colorB: 1.0 * f,
+          colorR: 1.0 * f,
+          colorG: 0.76 * f,
+          colorB: 0.36 * f,
         });
       }
     });
@@ -600,7 +591,7 @@ export function WebGLDataCube3D({
       const trailMat = new THREE.LineBasicMaterial({
         vertexColors: true,
         transparent: true,
-        opacity: 0.48,
+        opacity: 0.5,
         depthWrite: false,
         blending: THREE.AdditiveBlending,
       });
@@ -614,14 +605,14 @@ export function WebGLDataCube3D({
       };
     }
 
-    // Highlighted Target Planet X Anomaly Node
+    // Highlighted Target Planet X Anomaly Node (Telemetry Lock Emerald)
     const targetGeo = new THREE.SphereGeometry(0.11, 16, 16);
-    const targetMat = new THREE.MeshBasicMaterial({ color: 0xa3e635 });
+    const targetMat = new THREE.MeshBasicMaterial({ color: 0x10b981 });
     const targetMesh = new THREE.Mesh(targetGeo, targetMat);
     targetMesh.position.copy(planetPos);
     ctx.gaiaGroup.add(targetMesh);
 
-    // GNN Trajectory Line + Glowing Lime ArrowHelper
+    // GNN Trajectory Line + Glowing Emerald ArrowHelper
     const traj = datacube.kinematic_vector?.trajectory_points || [
       [0, 0, 18.4],
       [1.4, -0.7, 19.2],
@@ -640,13 +631,13 @@ export function WebGLDataCube3D({
 
       const trajGeo = new THREE.BufferGeometry().setFromPoints(trajVecs);
       const trajMat = new THREE.LineBasicMaterial({
-        color: 0xa3e635,
+        color: 0x10b981,
         transparent: true,
-        opacity: 0.85,
+        opacity: 0.9,
       });
       ctx.gaiaGroup.add(new THREE.Line(trajGeo, trajMat));
 
-      const arrow = new THREE.ArrowHelper(dir, origin, len, 0xa3e635, 0.28, 0.16);
+      const arrow = new THREE.ArrowHelper(dir, origin, len, 0x10b981, 0.28, 0.16);
       ctx.gaiaGroup.add(arrow);
     }
 
@@ -682,7 +673,7 @@ export function WebGLDataCube3D({
         <div
           role="tablist"
           aria-label="Three.js WebGL 3D view mode"
-          className="flex items-center gap-1 rounded-xl border border-slate-800 bg-slate-950/90 p-1"
+          className="flex items-center gap-1 rounded-xl border border-amber-500/20 bg-[#050507] p-1"
         >
           <button
             type="button"
@@ -691,8 +682,8 @@ export function WebGLDataCube3D({
             onClick={() => setView3D('cube')}
             className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-medium transition-colors ${
               view3D === 'cube'
-                ? 'bg-cyan-500/20 text-cyan-300'
-                : 'text-slate-400 hover:text-slate-200'
+                ? 'bg-amber-500/20 text-amber-300'
+                : 'text-slate-400 hover:text-amber-100'
             }`}
           >
             <Box className="h-3.5 w-3.5" aria-hidden="true" />
@@ -706,8 +697,8 @@ export function WebGLDataCube3D({
             onClick={() => setView3D('gaia3d')}
             className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-medium transition-colors ${
               view3D === 'gaia3d'
-                ? 'bg-lime-500/20 text-lime-300'
-                : 'text-slate-400 hover:text-slate-200'
+                ? 'bg-emerald-500/20 text-emerald-300'
+                : 'text-slate-400 hover:text-amber-100'
             }`}
           >
             <Orbit className="h-3.5 w-3.5" aria-hidden="true" />
@@ -718,7 +709,7 @@ export function WebGLDataCube3D({
         <button
           type="button"
           onClick={handleResetView}
-          className="inline-flex items-center gap-1 rounded-lg border border-slate-700 bg-slate-950/80 px-2.5 py-1 text-[11px] font-medium text-slate-300 transition-colors hover:border-cyan-500/50 hover:text-cyan-300"
+          className="inline-flex items-center gap-1 rounded-lg border border-amber-500/20 bg-[#050507] px-2.5 py-1 text-[11px] font-medium text-slate-300 transition-colors hover:border-amber-500/50 hover:text-amber-300"
         >
           <RotateCcw className="h-3 w-3" aria-hidden="true" />
           <span>Reset Orbit</span>
@@ -727,8 +718,8 @@ export function WebGLDataCube3D({
 
       {/* Three.js WebGL Canvas Container */}
       {webglUnavailable ? (
-        <div className="flex h-60 w-full flex-col items-center justify-center rounded-xl border border-slate-800 bg-[#040710] p-4 text-center">
-          <Box className="mb-2 h-7 w-7 text-cyan-400" aria-hidden="true" />
+        <div className="flex h-60 w-full flex-col items-center justify-center rounded-xl border border-amber-500/20 bg-[#050507] p-4 text-center">
+          <Box className="mb-2 h-7 w-7 text-amber-400" aria-hidden="true" />
           <p className="text-xs font-medium text-slate-200">
             WebGL 3D View Unavailable
           </p>
@@ -740,27 +731,27 @@ export function WebGLDataCube3D({
         <div
           ref={mountRef}
           aria-label="Interactive Three.js WebGL 3D visualization"
-          className="h-60 w-full cursor-grab overflow-hidden rounded-xl border border-slate-800 bg-[#040710] active:cursor-grabbing"
+          className="h-60 w-full cursor-grab overflow-hidden rounded-xl border border-amber-500/25 bg-[#050507] active:cursor-grabbing"
         />
       )}
 
-      {/* 1-line kid-friendly helper label */}
-      <p className="mt-1.5 text-center text-[11px] font-medium text-cyan-300/90">
-        Drag to rotate 3D cube • Slide to slice infrared colors
+      {/* 1-line helper label */}
+      <p className="mt-1.5 text-center text-[11px] font-medium text-amber-300/90">
+        Drag to rotate 3D thermal cube • Slide to slice infrared colors
       </p>
 
       {/* Mode-Specific Interactive Controls */}
       {view3D === 'cube' ? (
-        <div className="mt-2 rounded-xl border border-slate-800 bg-slate-950/75 px-3 py-2">
+        <div className="mt-2 rounded-xl border border-amber-500/20 bg-[#050507] px-3 py-2">
           <div className="mb-1.5 flex flex-wrap items-center justify-between gap-2 text-[11px]">
             <span className="inline-flex items-center gap-1.5 font-medium text-slate-300">
               <SlidersHorizontal
-                className="h-3.5 w-3.5 text-cyan-400"
+                className="h-3.5 w-3.5 text-amber-400"
                 aria-hidden="true"
               />
               <span>Infrared Color Slice</span>
             </span>
-            <span className="font-mono tabular-nums text-cyan-300">
+            <span className="font-mono tabular-nums text-amber-300">
               Color {sliceIndex + 1}/{totalBands} · {activeWavelength.toFixed(2)} µm
             </span>
           </div>
@@ -775,22 +766,22 @@ export function WebGLDataCube3D({
               value={sliceIndex}
               onChange={(e) => onSliceIndexChange(Number(e.target.value))}
               aria-label="Wavelength Z-Slice Slider from 0.75 to 5.0 microns"
-              className="w-full accent-cyan-400"
+              className="w-full accent-amber-400"
             />
             <span className="font-mono text-[10px] text-slate-500">5.0µm</span>
           </div>
 
-          <div className="mt-1 flex items-center justify-between text-[10px] font-mono text-slate-400">
-            <span>32×32×{totalBands} Light Voxels</span>
-            <span className="text-fuchsia-300">
+          <div className="mt-1 flex items-center justify-between font-mono text-[10px] text-slate-400">
+            <span>32×32×{totalBands} Thermal Voxels</span>
+            <span className="text-orange-300">
               {getBandFeatureHint(activeWavelength)}
             </span>
           </div>
         </div>
       ) : (
-        <div className="mt-2 rounded-xl border border-slate-800 bg-slate-950/75 px-3 py-2 text-[11px]">
+        <div className="mt-2 rounded-xl border border-amber-500/20 bg-[#050507] px-3 py-2 text-[11px]">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <span className="font-medium text-lime-300">
+            <span className="font-medium text-emerald-300">
               3D Star Trails &amp; Planet X Motion Path
             </span>
             <span className="font-mono tabular-nums text-slate-300">
@@ -799,7 +790,7 @@ export function WebGLDataCube3D({
           </div>
           <div className="mt-1 flex items-center justify-between font-mono text-[10px] text-slate-400">
             <span>25 Gaia Stars + Moving Target</span>
-            <span className="text-cyan-300">
+            <span className="text-amber-300">
               pmRA {pmRa >= 0 ? '+' : ''}
               {pmRa.toFixed(1)} | pmDec {pmDec >= 0 ? '+' : ''}
               {pmDec.toFixed(1)} mas/yr

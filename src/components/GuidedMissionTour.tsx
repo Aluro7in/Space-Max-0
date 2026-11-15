@@ -57,8 +57,8 @@ const TOUR_STEPS: TourStepSpec[] = [
 
 const SPOTLIGHT_CLASSES = [
   'ring-2',
-  'ring-cyan-400',
-  'shadow-[0_0_35px_rgba(34,211,238,0.45)]',
+  'ring-amber-400',
+  'shadow-[0_0_35px_rgba(245,158,11,0.45)]',
 ];
 
 interface RectBox {
@@ -247,16 +247,16 @@ export function GuidedMissionTour({
         role="dialog"
         aria-modal="false"
         aria-labelledby="spacemax-welcome-title"
-        className="fixed bottom-5 left-1/2 z-40 w-[calc(100%-1.5rem)] max-w-lg -translate-x-1/2 rounded-2xl border border-cyan-400/45 bg-slate-900/90 p-4 shadow-[0_0_40px_rgba(34,211,238,0.28)] backdrop-blur-xl sm:p-5"
+        className="fixed bottom-5 left-1/2 z-40 w-[calc(100%-1.5rem)] max-w-lg -translate-x-1/2 rounded-2xl border border-amber-400/45 bg-[#0B0C10]/95 p-4 shadow-[0_0_40px_rgba(245,158,11,0.28)] backdrop-blur-xl sm:p-5"
       >
         <div className="flex items-start gap-3">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-cyan-400/40 bg-cyan-500/15 text-cyan-300">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-amber-400/40 bg-amber-500/15 text-amber-300">
             <Rocket className="h-5 w-5" aria-hidden="true" />
           </div>
           <div className="min-w-0 flex-1">
             <h2
               id="spacemax-welcome-title"
-              className="text-sm font-bold text-white sm:text-base"
+              className="text-sm font-bold text-[#F8FAFC] sm:text-base"
             >
               Welcome to Space-Max 0: Planet X Explorer
             </h2>
@@ -268,7 +268,7 @@ export function GuidedMissionTour({
               <button
                 type="button"
                 onClick={onStartTour}
-                className="inline-flex items-center gap-1.5 rounded-xl bg-cyan-500 px-3.5 py-2 text-xs font-semibold text-slate-950 shadow-[0_0_22px_rgba(34,211,238,0.5)] transition-all hover:bg-cyan-400"
+                className="inline-flex items-center gap-1.5 rounded-xl bg-amber-500 px-3.5 py-2 text-xs font-semibold text-[#050507] shadow-[0_0_22px_rgba(245,158,11,0.45)] transition-all hover:bg-amber-400"
               >
                 <Sparkles className="h-3.5 w-3.5" aria-hidden="true" />
                 <span>Start Guided Tour</span>
@@ -276,7 +276,7 @@ export function GuidedMissionTour({
               <button
                 type="button"
                 onClick={onSkipTour}
-                className="rounded-xl border border-slate-700 bg-slate-950/80 px-3.5 py-2 text-xs font-medium text-slate-300 transition-colors hover:border-slate-500 hover:text-white"
+                className="rounded-xl border border-amber-500/20 bg-[#050507] px-3.5 py-2 text-xs font-medium text-slate-300 transition-colors hover:border-amber-500/45 hover:text-white"
               >
                 Skip to Explorer
               </button>
@@ -290,7 +290,6 @@ export function GuidedMissionTour({
   // Active 4-Step Visual Spotlight Walkthrough
   return (
     <>
-      {/* Subtle non-blocking spotlight cutout so the highlighted section stays interactive */}
       {targetRect && (
         <div
           aria-hidden="true"
@@ -299,7 +298,7 @@ export function GuidedMissionTour({
             left: Math.max(0, targetRect.left - 4),
             width: targetRect.width + 8,
             height: targetRect.height + 8,
-            boxShadow: '0 0 0 9999px rgba(2, 6, 17, 0.55)',
+            boxShadow: '0 0 0 9999px rgba(5, 5, 7, 0.62)',
           }}
           className="pointer-events-none fixed z-30 rounded-2xl transition-all duration-300"
         />
@@ -316,16 +315,15 @@ export function GuidedMissionTour({
             ? { top: cardPos.top, left: cardPos.left }
             : undefined
         }
-        className={`fixed z-50 rounded-2xl border border-cyan-400/50 bg-slate-900/95 p-4 shadow-[0_0_35px_rgba(34,211,238,0.3)] backdrop-blur-xl transition-all duration-300 ${
+        className={`fixed z-50 rounded-2xl border border-amber-400/50 bg-[#0B0C10]/95 p-4 shadow-[0_0_35px_rgba(245,158,11,0.3)] backdrop-blur-xl transition-all duration-300 ${
           isMobile
             ? 'bottom-3 left-1/2 w-[calc(100%-1.5rem)] max-w-md -translate-x-1/2'
             : 'w-[356px]'
         }`}
       >
-        {/* Top Row: Step Progress Dots + Auto-Play + Exit */}
-        <div className="flex items-center justify-between gap-2 border-b border-slate-800 pb-2.5">
+        <div className="flex items-center justify-between gap-2 border-b border-amber-500/15 pb-2.5">
           <div className="flex items-center gap-2">
-            <span className="rounded-full border border-cyan-400/40 bg-cyan-500/15 px-2 py-0.5 font-mono text-[11px] font-semibold text-cyan-300">
+            <span className="rounded-full border border-amber-400/40 bg-amber-500/15 px-2 py-0.5 font-mono text-[11px] font-semibold text-amber-300">
               {clampedStep + 1} / {TOUR_STEPS.length}
             </span>
             <div className="flex items-center gap-1.5" aria-label="Tour step progress">
@@ -342,8 +340,8 @@ export function GuidedMissionTour({
                     }}
                     className={`h-2 rounded-full transition-all ${
                       active
-                        ? 'w-5 bg-cyan-400 shadow-[0_0_8px_rgba(34,211,238,0.8)]'
-                        : 'w-2 bg-slate-700 hover:bg-slate-500'
+                        ? 'w-5 bg-amber-400 shadow-[0_0_8px_rgba(245,158,11,0.8)]'
+                        : 'w-2 bg-stone-700 hover:bg-stone-500'
                     }`}
                   />
                 );
@@ -358,8 +356,8 @@ export function GuidedMissionTour({
               aria-pressed={autoPlay}
               className={`inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-[11px] font-medium transition-colors ${
                 autoPlay
-                  ? 'border-cyan-400/60 bg-cyan-500/20 text-cyan-200'
-                  : 'border-slate-700 bg-slate-950/80 text-slate-300 hover:border-cyan-500/40 hover:text-cyan-200'
+                  ? 'border-amber-400/60 bg-amber-500/20 text-amber-200'
+                  : 'border-amber-500/20 bg-[#050507] text-slate-300 hover:border-amber-500/40 hover:text-amber-200'
               }`}
             >
               {autoPlay ? (
@@ -374,7 +372,7 @@ export function GuidedMissionTour({
               type="button"
               onClick={onFinishTour}
               aria-label="Exit guided tour"
-              className="inline-flex items-center gap-1 rounded-lg border border-slate-700 bg-slate-950/80 px-2 py-1 text-[11px] font-medium text-slate-300 transition-colors hover:border-rose-400/50 hover:text-rose-200"
+              className="inline-flex items-center gap-1 rounded-lg border border-amber-500/20 bg-[#050507] px-2 py-1 text-[11px] font-medium text-slate-300 transition-colors hover:border-rose-400/50 hover:text-rose-200"
             >
               <X className="h-3 w-3" aria-hidden="true" />
               <span>Exit</span>
@@ -382,11 +380,10 @@ export function GuidedMissionTour({
           </div>
         </div>
 
-        {/* Step Title & Kid-Friendly Instructions */}
         <div className="mt-3">
           <h3
             id="guided-tour-step-title"
-            className="text-sm font-bold text-white"
+            className="text-sm font-bold text-[#F8FAFC]"
           >
             {currentSpec.title}
           </h3>
@@ -395,7 +392,6 @@ export function GuidedMissionTour({
           </p>
         </div>
 
-        {/* Navigation Footer */}
         <div className="mt-4 flex items-center justify-between gap-2">
           <button
             type="button"
@@ -404,7 +400,7 @@ export function GuidedMissionTour({
               setAutoPlay(false);
               onStepChange(Math.max(0, clampedStep - 1));
             }}
-            className="inline-flex items-center gap-1 rounded-xl border border-slate-700 bg-slate-950/80 px-3 py-1.5 text-xs font-medium text-slate-300 transition-colors hover:border-slate-500 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+            className="inline-flex items-center gap-1 rounded-xl border border-amber-500/20 bg-[#050507] px-3 py-1.5 text-xs font-medium text-slate-300 transition-colors hover:border-amber-500/45 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
           >
             <ChevronLeft className="h-3.5 w-3.5" aria-hidden="true" />
             <span>Back</span>
@@ -414,7 +410,7 @@ export function GuidedMissionTour({
             <button
               type="button"
               onClick={onFinishTour}
-              className="inline-flex items-center gap-1.5 rounded-xl bg-cyan-500 px-3.5 py-1.5 text-xs font-semibold text-slate-950 shadow-[0_0_20px_rgba(34,211,238,0.45)] transition-all hover:bg-cyan-400"
+              className="inline-flex items-center gap-1.5 rounded-xl bg-amber-500 px-3.5 py-1.5 text-xs font-semibold text-[#050507] shadow-[0_0_20px_rgba(245,158,11,0.45)] transition-all hover:bg-amber-400"
             >
               <Sparkles className="h-3.5 w-3.5" aria-hidden="true" />
               <span>Finish &amp; Start Hunting</span>
@@ -426,7 +422,7 @@ export function GuidedMissionTour({
                 setAutoPlay(false);
                 onStepChange(Math.min(TOUR_STEPS.length - 1, clampedStep + 1));
               }}
-              className="inline-flex items-center gap-1 rounded-xl bg-cyan-500 px-3.5 py-1.5 text-xs font-semibold text-slate-950 shadow-[0_0_16px_rgba(34,211,238,0.35)] transition-all hover:bg-cyan-400"
+              className="inline-flex items-center gap-1 rounded-xl bg-amber-500 px-3.5 py-1.5 text-xs font-semibold text-[#050507] shadow-[0_0_16px_rgba(245,158,11,0.35)] transition-all hover:bg-amber-400"
             >
               <span>Next</span>
               <ChevronRight className="h-3.5 w-3.5" aria-hidden="true" />
