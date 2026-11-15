@@ -1,9 +1,18 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { CheckCircle2, Crosshair, Pause, Play, Sparkles } from 'lucide-react';
+import {
+  AlertTriangle,
+  CheckCircle2,
+  Crosshair,
+  Pause,
+  Play,
+  Sparkles,
+} from 'lucide-react';
+import type { ProperMotion } from '../types/telemetry';
 import { getTargetFrameMotion } from '../data/presetsAndFallback';
 import {
   buildHips2FitsUrl,
   buildSyntheticFitsEpochMatrices,
+  detectTransientMotionVector,
   extract32x32FromDataUrl,
   renderStretchedFitsToCanvas,
   zscaleAsinhStretch,
@@ -18,6 +27,7 @@ interface BlinkComparatorProps {
   epoch1Matrix?: number[][];
   epoch2Matrix?: number[][];
   datacubeSlice?: number[][];
+  properMotion?: ProperMotion;
   stacked6Array: boolean;
   onTargetLocked?: () => void;
 }
@@ -36,6 +46,7 @@ export function BlinkComparator({
   epoch1Matrix,
   epoch2Matrix,
   datacubeSlice,
+  properMotion,
   stacked6Array,
   onTargetLocked,
 }: BlinkComparatorProps) {
@@ -102,8 +113,8 @@ export function BlinkComparator({
     };
   }, [pastSrc, presentSrc, epoch1Matrix, epoch2Matrix]);
 
-  // Compute resolved 32x32 FITS matrices & apply ZScale + asinh stretch + 256x256 bicubic Moffat PSF rendering
-  useEffect(() => {
+  // Compute resolved 32x32 FITS matrices, ZScale + asinh stretch, and Epoch 1 (-) -> Epoch 2 (+) transient vector
+  const { stretched1, stretched2, transientAnalysis } = useMemo(() => {
     const synthetic = buildSyntheticFitsEpochMatrices(
       ra,
       dec,
@@ -127,9 +138,35 @@ export function BlinkComparator({
             ? datacubeSlice
             : synthetic.epoch2;
 
-    const stretched1 = zscaleAsinhStretch(rawEpoch1, stacked6Array);
-    const stretched2 = zscaleAsinhStretch(rawEpoch2, stacked6Array);
+    const s1 = zscaleAsinhStretch(rawEpoch1, stacked6Array);
+    const s2 = zscaleAsinhStretch(rawEpoch2, stacked6Array);
+    const catalogPmMasYr = properMotion
+      ? Math.hypot(properMotion.pm_ra_mas_yr, properMotion.pm_dec_mas_yr)
+      : undefined;
+    const analysis = detectTransientMotionVector(s1.stretched, s2.stretched, {
+      catalogPmMasYr,
+    });
 
+    return {
+      stretched1: s1,
+      stretched2: s2,
+      transientAnalysis: analysis,
+    };
+  }, [
+    ra,
+    dec,
+    motion,
+    stacked6Array,
+    epoch1Matrix,
+    epoch2Matrix,
+    decodedPastMatrix,
+    decodedPresentMatrix,
+    datacubeSlice,
+    properMotion,
+  ]);
+
+  // Render high-DPI 256x256 bicubic Moffat PSF canvases from stretched matrices
+  useEffect(() => {
     if (pastCanvasRef.current) {
       renderStretchedFitsToCanvas(pastCanvasRef.current, stretched1.stretched, {
         size: 256,
@@ -160,15 +197,10 @@ export function BlinkComparator({
       );
     }
   }, [
-    ra,
-    dec,
+    stretched1,
+    stretched2,
     motion,
     stacked6Array,
-    epoch1Matrix,
-    epoch2Matrix,
-    decodedPastMatrix,
-    decodedPresentMatrix,
-    datacubeSlice,
     pastSurveyLoaded,
     presentSurveyLoaded,
   ]);
@@ -208,6 +240,11 @@ export function BlinkComparator({
   const ringTopPct = (isPresent ? motion.presentY : motion.pastY) * 100;
   const presentOpacity = epochBlend / 100;
   const pastOpacity = 1 - presentOpacity;
+
+  const e1X = transientAnalysis.epoch1Footprint.normX * 100;
+  const e1Y = transientAnalysis.epoch1Footprint.normY * 100;
+  const e2X = transientAnalysis.epoch2Detection.normX * 100;
+  const e2Y = transientAnalysis.epoch2Detection.normY * 100;
 
   return (
     <div className="flex flex-col gap-2.5">
@@ -300,6 +337,59 @@ export function BlinkComparator({
           />
         </div>
 
+        {/* High Proper Motion Displacement Vector Overlay: Epoch 1 (−) → Epoch 2 (+) */}
+        {transientAnalysis.isHighProperMotion && (
+          <svg
+            aria-hidden="true"
+            viewBox="0 0 100 100"
+            preserveAspectRatio="none"
+            className="pointer-events-none absolute inset-0 h-full w-full"
+          >
+            <defs>
+              <marker
+                id="blink-pm-arrow"
+                markerWidth="5"
+                markerHeight="5"
+                refX="3.5"
+                refY="2.5"
+                orient="auto"
+              >
+                <path d="M0,0.5 L4.5,2.5 L0,4.5 Z" fill="#FBBF24" />
+              </marker>
+            </defs>
+            <line
+              x1={e1X}
+              y1={e1Y}
+              x2={e2X}
+              y2={e2Y}
+              stroke="#FF5500"
+              strokeWidth="0.6"
+              strokeDasharray="1.8 1.3"
+              strokeOpacity="0.9"
+              markerEnd="url(#blink-pm-arrow)"
+            />
+            <circle
+              cx={e1X}
+              cy={e1Y}
+              r="3.2"
+              fill="none"
+              stroke="#FF5500"
+              strokeWidth="0.55"
+              strokeDasharray="1.2 1"
+              strokeOpacity="0.85"
+            />
+            <circle
+              cx={e2X}
+              cy={e2Y}
+              r="3.6"
+              fill="none"
+              stroke="#FBBF24"
+              strokeWidth="0.55"
+              strokeOpacity="0.85"
+            />
+          </svg>
+        )}
+
         {/* JWST Warm Titanium Corner Reticles */}
         <div
           aria-hidden="true"
@@ -336,24 +426,53 @@ export function BlinkComparator({
           </div>
         )}
 
-        {/* Active Epoch Badge */}
-        <div
-          className={`pointer-events-none absolute top-3 left-10 rounded-md border px-2.5 py-1 font-mono text-[11px] font-semibold transition-colors ${
-            isPresent
-              ? 'border-amber-400/60 bg-[#050507]/85 text-amber-300'
-              : 'border-[#FF5500]/60 bg-[#050507]/85 text-orange-300'
-          }`}
-        >
-          {activeEpochLabel}
+        {/* Top HUD Row: Active Epoch & Stack Status */}
+        <div className="pointer-events-none absolute inset-x-10 top-3 flex flex-wrap items-center justify-between gap-1.5">
+          <div
+            className={`rounded-md border px-2 py-0.5 font-mono text-[10px] font-semibold transition-colors sm:px-2.5 sm:py-1 sm:text-[11px] ${
+              isPresent
+                ? 'border-amber-400/60 bg-[#050507]/85 text-amber-300'
+                : 'border-[#FF5500]/60 bg-[#050507]/85 text-orange-300'
+            }`}
+          >
+            {activeEpochLabel}
+          </div>
+
+          <div className="rounded-md border border-amber-500/25 bg-[#050507]/85 px-2 py-0.5 font-mono text-[10px] text-slate-300 sm:py-1">
+            {stacked6Array ? 'ZScale · 6-Cam Stack' : 'Single Camera'}
+          </div>
         </div>
 
-        <div className="pointer-events-none absolute top-3 right-10 rounded-md border border-amber-500/25 bg-[#050507]/85 px-2 py-1 font-mono text-[10px] text-slate-300">
-          {stacked6Array ? 'ZScale · 6-Cam Stack' : 'Single Camera'}
-        </div>
+        {/* Bottom HUD Row: Stretch Readout & High Proper Motion Transient Alert (>50 mas/yr) */}
+        <div className="pointer-events-none absolute inset-x-10 bottom-3 flex flex-wrap items-center justify-between gap-1.5">
+          <div className="rounded-md border border-amber-500/20 bg-[#050507]/85 px-2 py-0.5 font-mono text-[10px] text-amber-200/80">
+            asinh(12) · Moffat PSF
+          </div>
 
-        {/* Bottom-left stretch readout */}
-        <div className="pointer-events-none absolute bottom-3 left-10 rounded-md border border-amber-500/20 bg-[#050507]/85 px-2 py-0.5 font-mono text-[10px] text-amber-200/80">
-          asinh(12) · Bicubic Moffat PSF
+          {transientAnalysis.isHighProperMotion ? (
+            <div
+              role="status"
+              title={`High Proper Motion (>50 mas/yr): Epoch 1 (−) → Epoch 2 (+) vector ${transientAnalysis.vectorDistPx.toFixed(1)} px (${transientAnalysis.vectorDxPx >= 0 ? '+' : ''}${transientAnalysis.vectorDxPx.toFixed(1)}, ${transientAnalysis.vectorDyPx >= 0 ? '+' : ''}${transientAnalysis.vectorDyPx.toFixed(1)} px)`}
+              className="inline-flex items-center gap-1 rounded-md border border-[#FF5500]/80 bg-[#050507]/90 px-2 py-0.5 font-mono text-[10px] font-semibold tabular-nums text-orange-300 shadow-[0_0_16px_rgba(255,85,0,0.4)]"
+            >
+              <AlertTriangle
+                className="h-3 w-3 shrink-0 animate-pulse text-[#FF5500]"
+                aria-hidden="true"
+              />
+              <span>Transient Alert</span>
+              <span className="text-amber-300">
+                {transientAnalysis.vectorDistMasYr.toFixed(1)} mas/yr
+              </span>
+            </div>
+          ) : (
+            <div
+              title={`Epoch 1 (−) → Epoch 2 (+) vector ${transientAnalysis.vectorDistPx.toFixed(1)} px (<50 mas/yr threshold)`}
+              className="rounded-md border border-amber-500/20 bg-[#050507]/85 px-2 py-0.5 font-mono text-[10px] tabular-nums text-slate-400"
+            >
+              Δ{transientAnalysis.vectorDistPx.toFixed(1)} px ·{' '}
+              {transientAnalysis.vectorDistMasYr.toFixed(1)} mas/yr
+            </div>
+          )}
         </div>
       </div>
 

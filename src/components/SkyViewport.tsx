@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  AlertTriangle,
   CheckCircle2,
   Database,
   Eye,
@@ -18,6 +19,7 @@ import type {
 import { getTargetFrameMotion } from '../data/presetsAndFallback';
 import {
   buildSyntheticFitsEpochMatrices,
+  detectTransientMotionVector,
   extract32x32FromDataUrl,
   renderDifferenceDipoleCanvas,
   zscaleAsinhStretch,
@@ -146,6 +148,16 @@ export function SkyViewport({
   const pmDec = properMotion?.pm_dec_mas_yr ?? -6.8;
   const pmTotal = Math.hypot(pmRa, pmDec);
 
+  const diffTransient = useMemo(
+    () =>
+      detectTransientMotionVector(
+        resolvedMatrices.stretch1.stretched,
+        resolvedMatrices.stretch2.stretched,
+        { catalogPmMasYr: properMotion ? pmTotal : undefined }
+      ),
+    [resolvedMatrices, properMotion, pmTotal]
+  );
+
   // Render high-DPI 256x256 smooth bicubic differential photometry dipole
   useEffect(() => {
     if (viewMode !== 'difference' || !diffCanvasRef.current) return;
@@ -268,6 +280,7 @@ export function SkyViewport({
           epoch1Matrix={epoch1Matrix}
           epoch2Matrix={epoch2Matrix}
           datacubeSlice={datacubeSlice}
+          properMotion={properMotion}
           stacked6Array={stacked6Array}
         />
       )}
@@ -282,6 +295,22 @@ export function SkyViewport({
           <div className="absolute top-3 left-3 rounded-md border border-[#FF5500]/50 bg-[#050507]/85 px-2.5 py-1 font-mono text-[11px] text-orange-300">
             Differential Photometry: Now − Past
           </div>
+          {diffTransient.isHighProperMotion && (
+            <div
+              role="status"
+              title={`High Proper Motion (>50 mas/yr): Epoch 1 (−) → Epoch 2 (+) vector ${diffTransient.vectorDistPx.toFixed(1)} px`}
+              className="absolute top-3 right-3 inline-flex items-center gap-1.5 rounded-md border border-[#FF5500]/80 bg-[#050507]/90 px-2 py-1 font-mono text-[10px] font-semibold tabular-nums text-orange-300 shadow-[0_0_16px_rgba(255,85,0,0.4)]"
+            >
+              <AlertTriangle
+                className="h-3 w-3 shrink-0 animate-pulse text-[#FF5500]"
+                aria-hidden="true"
+              />
+              <span>Transient Alert</span>
+              <span className="text-amber-300">
+                {diffTransient.vectorDistMasYr.toFixed(1)} mas/yr
+              </span>
+            </div>
+          )}
           <div className="absolute bottom-3 left-3 flex flex-wrap items-center gap-3 rounded-md border border-amber-500/25 bg-[#050507]/85 px-2.5 py-1 font-mono text-[10px] text-slate-300">
             <span className="inline-flex items-center gap-1">
               <span className="h-2 w-2 rounded-full bg-amber-400" />

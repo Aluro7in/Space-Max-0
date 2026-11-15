@@ -601,3 +601,141 @@ export function renderDifferenceDipoleCanvas(
   ctx.fillText(`Δθ ${rulerText} · μ=${Math.hypot(options.pmRaMasYr, options.pmDecMasYr).toFixed(1)} mas/yr`, rx2, ry - 7);
   ctx.textAlign = 'left';
 }
+
+export interface TransientMotionAnalysis {
+  epoch1Footprint: { normX: number; normY: number; gridX: number; gridY: number };
+  epoch2Detection: { normX: number; normY: number; gridX: number; gridY: number };
+  vectorDxPx: number;
+  vectorDyPx: number;
+  vectorDistPx: number;
+  vectorDistMasYr: number;
+  isHighProperMotion: boolean;
+}
+
+/**
+ * Calculates the displacement vector between the Epoch 1 negative footprint
+ * (diff < 0 centroid) and Epoch 2 positive detection (diff > 0 centroid) in
+ * the Now - Past residual matrix, converting FITS pixel displacement over
+ * the 25-year archival baseline (2000 -> 2025+) into mas/yr proper motion.
+ * Automatically flags high proper motion transients (> 50 mas/yr).
+ */
+export function detectTransientMotionVector(
+  pastStretched: number[][],
+  presentStretched: number[][],
+  options?: {
+    stampSpanArcsec?: number;
+    baselineYears?: number;
+    catalogPmMasYr?: number;
+  }
+): TransientMotionAnalysis {
+  const h = Math.min(pastStretched.length, presentStretched.length);
+  const w = Math.min(pastStretched[0]?.length || 0, presentStretched[0]?.length || 0);
+
+  if (!h || !w) {
+    return {
+      epoch1Footprint: { normX: 0.35, normY: 0.35, gridX: 11, gridY: 11 },
+      epoch2Detection: { normX: 0.65, normY: 0.65, gridX: 20, gridY: 20 },
+      vectorDxPx: 0,
+      vectorDyPx: 0,
+      vectorDistPx: 0,
+      vectorDistMasYr: 0,
+      isHighProperMotion: false,
+    };
+  }
+
+  // 1. Locate global negative minimum (Epoch 1 footprint) and positive peak (Epoch 2 detection)
+  let minDiff = Infinity;
+  let maxDiff = -Infinity;
+  let minX = Math.floor(w / 2);
+  let minY = Math.floor(h / 2);
+  let maxX = Math.floor(w / 2);
+  let maxY = Math.floor(h / 2);
+
+  const diffGrid: number[][] = Array.from({ length: h }, () => new Array<number>(w).fill(0));
+
+  for (let y = 0; y < h; y += 1) {
+    for (let x = 0; x < w; x += 1) {
+      const d = (presentStretched[y][x] ?? 0) - (pastStretched[y][x] ?? 0);
+      diffGrid[y][x] = d;
+      if (d < minDiff) {
+        minDiff = d;
+        minX = x;
+        minY = y;
+      }
+      if (d > maxDiff) {
+        maxDiff = d;
+        maxX = x;
+        maxY = y;
+      }
+    }
+  }
+
+  // 2. Refine sub-pixel flux-weighted centroids in a 5x5 window around each dipole pole
+  const computeWeightedCentroid = (
+    cx: number,
+    cy: number,
+    polarity: 1 | -1,
+    floorAmp: number
+  ) => {
+    let sumW = 0;
+    let sumX = 0;
+    let sumY = 0;
+    for (let dy = -2; dy <= 2; dy += 1) {
+      const yy = Math.max(0, Math.min(h - 1, cy + dy));
+      for (let dx = -2; dx <= 2; dx += 1) {
+        const xx = Math.max(0, Math.min(w - 1, cx + dx));
+        const val = diffGrid[yy][xx] * polarity;
+        if (val > floorAmp) {
+          const weight = val * val;
+          sumW += weight;
+          sumX += xx * weight;
+          sumY += yy * weight;
+        }
+      }
+    }
+    if (sumW <= 1e-6) return { gx: cx, gy: cy };
+    return { gx: sumX / sumW, gy: sumY / sumW };
+  };
+
+  const negFloor = Math.max(0.03, Math.abs(minDiff) * 0.35);
+  const posFloor = Math.max(0.03, Math.abs(maxDiff) * 0.35);
+  const negC = computeWeightedCentroid(minX, minY, -1, negFloor);
+  const posC = computeWeightedCentroid(maxX, maxY, 1, posFloor);
+
+  const vectorDxPx = posC.gx - negC.gx;
+  const vectorDyPx = posC.gy - negC.gy;
+  const vectorDistPx = Math.hypot(vectorDxPx, vectorDyPx);
+
+  // Calibrated 3.6" high-resolution PSF stamp over 25-year archival baseline (2000 -> 2025+)
+  const stampSpanArcsec = options?.stampSpanArcsec ?? 3.6;
+  const baselineYears = options?.baselineYears ?? 25;
+  const normDist = vectorDistPx / Math.max(1, Math.hypot(w - 1, h - 1) / Math.SQRT2);
+  const measuredMasYr = (normDist * stampSpanArcsec * 1000) / baselineYears;
+
+  // If residual dipole is weak/absent (e.g. faint Epoch 1), guard against noise spikes
+  const hasRealDipole = Math.abs(minDiff) > 0.08 && Math.abs(maxDiff) > 0.1;
+  const effectiveMasYr = hasRealDipole
+    ? measuredMasYr
+    : options?.catalogPmMasYr ?? measuredMasYr;
+
+  return {
+    epoch1Footprint: {
+      normX: negC.gx / Math.max(1, w - 1),
+      normY: negC.gy / Math.max(1, h - 1),
+      gridX: Number(negC.gx.toFixed(2)),
+      gridY: Number(negC.gy.toFixed(2)),
+    },
+    epoch2Detection: {
+      normX: posC.gx / Math.max(1, w - 1),
+      normY: posC.gy / Math.max(1, h - 1),
+      gridX: Number(posC.gx.toFixed(2)),
+      gridY: Number(posC.gy.toFixed(2)),
+    },
+    vectorDxPx: Number(vectorDxPx.toFixed(2)),
+    vectorDyPx: Number(vectorDyPx.toFixed(2)),
+    vectorDistPx: Number(vectorDistPx.toFixed(2)),
+    vectorDistMasYr: Number(effectiveMasYr.toFixed(1)),
+    isHighProperMotion: effectiveMasYr > 50,
+  };
+}
+
