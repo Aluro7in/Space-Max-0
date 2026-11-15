@@ -6,6 +6,7 @@ import {
   Eye,
   Globe,
   Layers,
+  MoveUpRight,
   ShieldCheck,
   Sparkles,
 } from 'lucide-react';
@@ -26,6 +27,7 @@ import {
 } from '../utils/astroStretch';
 import { AladinSkyMap } from './AladinSkyMap';
 import { BlinkComparator } from './BlinkComparator';
+import { KinematicVectorOverlay } from './KinematicVectorOverlay';
 
 interface SkyViewportProps {
   coordinates: Coordinates;
@@ -66,6 +68,7 @@ export function SkyViewport({
   onToggleStack6,
 }: SkyViewportProps) {
   const [viewMode, setViewMode] = useState<SkyViewMode>('blink');
+  const [showDiffVector, setShowDiffVector] = useState<boolean>(true);
   const [overlays, setOverlays] = useState<TelescopeOverlayState>({
     gaiaStarMap: true,
     wiseHeatMap: true,
@@ -286,23 +289,41 @@ export function SkyViewport({
       )}
 
       {viewMode === 'difference' && (
-        <div className="relative flex aspect-square max-h-[370px] w-full items-center justify-center overflow-hidden rounded-xl border border-amber-500/25 bg-[#050507]">
-          <canvas
-            ref={diffCanvasRef}
-            aria-label="Differential Photometry Dipole Now minus Past"
-            className="h-full w-full object-contain"
-          />
-          <div className="absolute top-3 left-3 rounded-md border border-[#FF5500]/50 bg-[#050507]/85 px-2.5 py-1 font-mono text-[11px] text-orange-300">
+        <div className="relative flex h-[320px] w-full items-center justify-center overflow-hidden rounded-xl border border-amber-500/25 bg-[#050507] sm:h-[370px]">
+          <div className="relative aspect-square h-full max-w-full">
+            <canvas
+              ref={diffCanvasRef}
+              aria-label="Differential Photometry Dipole Now minus Past"
+              className="h-full w-full object-contain"
+            />
+            <KinematicVectorOverlay
+              epoch1Norm={{
+                x: diffTransient.epoch1Footprint.normX,
+                y: diffTransient.epoch1Footprint.normY,
+              }}
+              epoch2Norm={{
+                x: diffTransient.epoch2Detection.normX,
+                y: diffTransient.epoch2Detection.normY,
+              }}
+              properMotionMasYr={diffTransient.vectorDistMasYr}
+              displacementArcsec={diffTransient.vectorDistArcsec}
+              displacementPx={diffTransient.vectorDistPx}
+              visible={showDiffVector}
+            />
+          </div>
+
+          <div className="pointer-events-none absolute top-3 left-3 rounded-md border border-[#FF5500]/50 bg-[#050507]/85 px-2.5 py-1 font-mono text-[11px] text-orange-300">
             Differential Photometry: Now − Past
           </div>
+
           {diffTransient.isHighProperMotion && (
             <div
               role="status"
-              title={`High Proper Motion (>50 mas/yr): Epoch 1 (−) → Epoch 2 (+) vector ${diffTransient.vectorDistPx.toFixed(1)} px`}
-              className="absolute top-3 right-3 inline-flex items-center gap-1.5 rounded-md border border-[#FF5500]/80 bg-[#050507]/90 px-2 py-1 font-mono text-[10px] font-semibold tabular-nums text-orange-300 shadow-[0_0_16px_rgba(255,85,0,0.4)]"
+              title={`High Proper Motion (>50 mas/yr): Epoch 1 (−) → Epoch 2 (+) vector ${diffTransient.vectorDistPx.toFixed(1)} px (${diffTransient.vectorDistArcsec.toFixed(2)} arcsec)`}
+              className="pointer-events-none absolute top-3 right-3 inline-flex items-center gap-1.5 rounded-md border border-[#FF5500]/80 bg-[#050507]/90 px-2 py-1 font-mono text-[10px] font-semibold tabular-nums text-orange-300 shadow-[0_0_16px_rgba(255,85,0,0.4)]"
             >
               <AlertTriangle
-                className="h-3 w-3 shrink-0 animate-pulse text-[#FF5500]"
+                className="h-3 w-3 shrink-0 text-[#FF5500]"
                 aria-hidden="true"
               />
               <span>Transient Alert</span>
@@ -311,15 +332,32 @@ export function SkyViewport({
               </span>
             </div>
           )}
-          <div className="absolute bottom-3 left-3 flex flex-wrap items-center gap-3 rounded-md border border-amber-500/25 bg-[#050507]/85 px-2.5 py-1 font-mono text-[10px] text-slate-300">
-            <span className="inline-flex items-center gap-1">
-              <span className="h-2 w-2 rounded-full bg-amber-400" />
-              SPHEREx Now (+)
-            </span>
-            <span className="inline-flex items-center gap-1">
-              <span className="h-2 w-2 rounded-full bg-rose-500" />
-              Epoch 1 2000 (−)
-            </span>
+
+          <div className="pointer-events-none absolute inset-x-3 bottom-3 flex flex-wrap items-center justify-between gap-2">
+            <div className="flex flex-wrap items-center gap-3 rounded-md border border-amber-500/25 bg-[#050507]/85 px-2.5 py-1 font-mono text-[10px] text-slate-300">
+              <span className="inline-flex items-center gap-1">
+                <span className="h-2 w-2 rounded-full bg-cyan-300 ring-1 ring-amber-400" />
+                SPHEREx Now (+)
+              </span>
+              <span className="inline-flex items-center gap-1">
+                <span className="h-2 w-2 rounded-full bg-rose-500" />
+                Epoch 1 2000 (−)
+              </span>
+            </div>
+
+            <button
+              type="button"
+              aria-pressed={showDiffVector}
+              onClick={() => setShowDiffVector((prev) => !prev)}
+              className={`pointer-events-auto inline-flex items-center gap-1 rounded-md border px-2 py-1 font-mono text-[10px] font-medium transition-colors ${
+                showDiffVector
+                  ? 'border-amber-500/60 bg-amber-500/15 text-amber-200 hover:bg-amber-500/25'
+                  : 'border-amber-500/20 bg-[#050507]/85 text-slate-400 hover:text-amber-100'
+              }`}
+            >
+              <MoveUpRight className="h-3 w-3 text-amber-400" aria-hidden="true" />
+              <span>Vector Overlay</span>
+            </button>
           </div>
         </div>
       )}

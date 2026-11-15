@@ -530,51 +530,6 @@ export function renderDifferenceDipoleCanvas(
     ctx.stroke();
   }
 
-  // Epoch 1 ring (Crimson/Magenta)
-  ctx.strokeStyle = 'rgba(244, 63, 94, 0.85)';
-  ctx.lineWidth = 1.5;
-  ctx.setLineDash([3, 3]);
-  ctx.beginPath();
-  ctx.arc(pastCx, pastCy, 14, 0, Math.PI * 2);
-  ctx.stroke();
-  ctx.setLineDash([]);
-
-  // Epoch 2 ring (Solar Gold)
-  ctx.strokeStyle = 'rgba(251, 191, 36, 0.95)';
-  ctx.lineWidth = 1.6;
-  ctx.beginPath();
-  ctx.arc(presCx, presCy, 14, 0, Math.PI * 2);
-  ctx.stroke();
-
-  // Proper-motion vector arrow connecting Epoch 1 -> Epoch 2
-  const dx = presCx - pastCx;
-  const dy = presCy - pastCy;
-  const dist = Math.hypot(dx, dy);
-  if (dist > 6) {
-    const ux = dx / dist;
-    const uy = dy / dist;
-    const startX = pastCx + ux * 15;
-    const startY = pastCy + uy * 15;
-    const endX = presCx - ux * 15;
-    const endY = presCy - uy * 15;
-
-    ctx.strokeStyle = '#fbbf24';
-    ctx.lineWidth = 1.8;
-    ctx.beginPath();
-    ctx.moveTo(startX, startY);
-    ctx.lineTo(endX, endY);
-    ctx.stroke();
-
-    const angle = Math.atan2(dy, dx);
-    ctx.fillStyle = '#fbbf24';
-    ctx.beginPath();
-    ctx.moveTo(endX, endY);
-    ctx.lineTo(endX - 7 * Math.cos(angle - 0.45), endY - 7 * Math.sin(angle - 0.45));
-    ctx.lineTo(endX - 7 * Math.cos(angle + 0.45), endY - 7 * Math.sin(angle + 0.45));
-    ctx.closePath();
-    ctx.fill();
-  }
-
   // Arcsecond displacement ruler in bottom-right
   const fovArcsec = options.fovDeg * 3600;
   const barFrac = 0.22;
@@ -608,6 +563,7 @@ export interface TransientMotionAnalysis {
   vectorDxPx: number;
   vectorDyPx: number;
   vectorDistPx: number;
+  vectorDistArcsec: number;
   vectorDistMasYr: number;
   isHighProperMotion: boolean;
 }
@@ -616,7 +572,7 @@ export interface TransientMotionAnalysis {
  * Calculates the displacement vector between the Epoch 1 negative footprint
  * (diff < 0 centroid) and Epoch 2 positive detection (diff > 0 centroid) in
  * the Now - Past residual matrix, converting FITS pixel displacement over
- * the 25-year archival baseline (2000 -> 2025+) into mas/yr proper motion.
+ * the 25-year archival baseline (2000 -> 2025+) into arcsecond separation and mas/yr proper motion.
  * Automatically flags high proper motion transients (> 50 mas/yr).
  */
 export function detectTransientMotionVector(
@@ -638,6 +594,7 @@ export function detectTransientMotionVector(
       vectorDxPx: 0,
       vectorDyPx: 0,
       vectorDistPx: 0,
+      vectorDistArcsec: 0,
       vectorDistMasYr: 0,
       isHighProperMotion: false,
     };
@@ -710,13 +667,17 @@ export function detectTransientMotionVector(
   const stampSpanArcsec = options?.stampSpanArcsec ?? 3.6;
   const baselineYears = options?.baselineYears ?? 25;
   const normDist = vectorDistPx / Math.max(1, Math.hypot(w - 1, h - 1) / Math.SQRT2);
-  const measuredMasYr = (normDist * stampSpanArcsec * 1000) / baselineYears;
+  const measuredArcsec = normDist * stampSpanArcsec;
+  const measuredMasYr = (measuredArcsec * 1000) / baselineYears;
 
   // If residual dipole is weak/absent (e.g. faint Epoch 1), guard against noise spikes
   const hasRealDipole = Math.abs(minDiff) > 0.08 && Math.abs(maxDiff) > 0.1;
   const effectiveMasYr = hasRealDipole
     ? measuredMasYr
     : options?.catalogPmMasYr ?? measuredMasYr;
+  const effectiveArcsec = hasRealDipole
+    ? measuredArcsec
+    : (effectiveMasYr * baselineYears) / 1000;
 
   return {
     epoch1Footprint: {
@@ -734,6 +695,7 @@ export function detectTransientMotionVector(
     vectorDxPx: Number(vectorDxPx.toFixed(2)),
     vectorDyPx: Number(vectorDyPx.toFixed(2)),
     vectorDistPx: Number(vectorDistPx.toFixed(2)),
+    vectorDistArcsec: Number(effectiveArcsec.toFixed(3)),
     vectorDistMasYr: Number(effectiveMasYr.toFixed(1)),
     isHighProperMotion: effectiveMasYr > 50,
   };

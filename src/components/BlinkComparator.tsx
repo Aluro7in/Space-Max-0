@@ -3,6 +3,7 @@ import {
   AlertTriangle,
   CheckCircle2,
   Crosshair,
+  MoveUpRight,
   Pause,
   Play,
   Sparkles,
@@ -17,6 +18,7 @@ import {
   renderStretchedFitsToCanvas,
   zscaleAsinhStretch,
 } from '../utils/astroStretch';
+import { KinematicVectorOverlay } from './KinematicVectorOverlay';
 
 interface BlinkComparatorProps {
   ra: number;
@@ -57,6 +59,7 @@ export function BlinkComparator({
   const [epochBlend, setEpochBlend] = useState<number>(0); // 0 = Past (2000), 100 = SPHEREx Now
   const [targetLocked, setTargetLocked] = useState<boolean>(false);
   const [missHint, setMissHint] = useState<boolean>(false);
+  const [showVectorOverlay, setShowVectorOverlay] = useState<boolean>(true);
 
   const [pastSurveyLoaded, setPastSurveyLoaded] = useState<boolean>(false);
   const [presentSurveyLoaded, setPresentSurveyLoaded] = useState<boolean>(false);
@@ -241,11 +244,6 @@ export function BlinkComparator({
   const presentOpacity = epochBlend / 100;
   const pastOpacity = 1 - presentOpacity;
 
-  const e1X = transientAnalysis.epoch1Footprint.normX * 100;
-  const e1Y = transientAnalysis.epoch1Footprint.normY * 100;
-  const e2X = transientAnalysis.epoch2Detection.normX * 100;
-  const e2Y = transientAnalysis.epoch2Detection.normY * 100;
-
   return (
     <div className="flex flex-col gap-2.5">
       {/* Interactive Click-to-Lock Challenge Banner */}
@@ -274,121 +272,104 @@ export function BlinkComparator({
         )}
       </div>
 
-      {/* High-DPI 256x256 ZScale + asinh + Moffat PSF + CDS HiPS2FITS Blink Canvas */}
-      <div
-        role="button"
-        tabIndex={0}
-        aria-label="Interactive starfield blink frame. Click the moving planet to lock target."
-        onClick={handleFrameClick}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' || e.key === ' ') {
-            e.preventDefault();
-            setTargetLocked(true);
-            onTargetLocked?.();
-          }
-        }}
-        className="relative flex aspect-square max-h-[360px] w-full cursor-crosshair items-center justify-center overflow-hidden rounded-xl border border-amber-500/25 bg-[#050507] focus:outline-none focus:ring-2 focus:ring-amber-400/60"
-      >
-        {/* Epoch 1: CDS 2MASS Survey Backdrop + Bicubic ZScale FITS Canvas */}
+      {/* Outer Obsidian Frame Bay with Centered 1:1 Square Starfield + Vector Overlay */}
+      <div className="relative flex h-[320px] w-full items-center justify-center overflow-hidden rounded-xl border border-amber-500/25 bg-[#050507] sm:h-[360px]">
         <div
-          className="pointer-events-none absolute inset-0 transition-opacity duration-150"
-          style={{ opacity: pastOpacity }}
+          role="button"
+          tabIndex={0}
+          aria-label="Interactive starfield blink frame. Click the moving planet to lock target."
+          onClick={handleFrameClick}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              setTargetLocked(true);
+              onTargetLocked?.();
+            }
+          }}
+          className="relative aspect-square h-full max-w-full cursor-crosshair overflow-hidden focus:outline-none focus:ring-2 focus:ring-amber-400/60"
         >
-          <img
-            src={pastHipsUrl}
-            alt="2MASS Past 2000 Sky Survey"
-            referrerPolicy="no-referrer"
-            onLoad={() => setPastSurveyLoaded(true)}
-            onError={() => setPastSurveyLoaded(false)}
-            className={`h-full w-full object-cover transition-opacity duration-300 ${
-              pastSurveyLoaded ? 'opacity-70' : 'opacity-0'
-            }`}
-          />
-          <canvas
-            ref={pastCanvasRef}
-            className="absolute inset-0 h-full w-full object-cover"
-            style={{
-              mixBlendMode: pastSurveyLoaded ? 'screen' : 'normal',
-            }}
-          />
-        </div>
-
-        {/* Epoch 2: CDS allWISE Survey Backdrop + Bicubic ZScale FITS Canvas */}
-        <div
-          className="pointer-events-none absolute inset-0 transition-opacity duration-150"
-          style={{ opacity: presentOpacity }}
-        >
-          <img
-            src={presentHipsUrl}
-            alt="allWISE SPHEREx Now Sky Survey"
-            referrerPolicy="no-referrer"
-            onLoad={() => setPresentSurveyLoaded(true)}
-            onError={() => setPresentSurveyLoaded(false)}
-            className={`h-full w-full object-cover transition-opacity duration-300 ${
-              presentSurveyLoaded ? 'opacity-70' : 'opacity-0'
-            }`}
-          />
-          <canvas
-            ref={presentCanvasRef}
-            className="absolute inset-0 h-full w-full object-cover"
-            style={{
-              mixBlendMode: presentSurveyLoaded ? 'screen' : 'normal',
-            }}
-          />
-        </div>
-
-        {/* High Proper Motion Displacement Vector Overlay: Epoch 1 (−) → Epoch 2 (+) */}
-        {transientAnalysis.isHighProperMotion && (
-          <svg
-            aria-hidden="true"
-            viewBox="0 0 100 100"
-            preserveAspectRatio="none"
-            className="pointer-events-none absolute inset-0 h-full w-full"
+          {/* Epoch 1: CDS 2MASS Survey Backdrop + Bicubic ZScale FITS Canvas */}
+          <div
+            className="pointer-events-none absolute inset-0 transition-opacity duration-150"
+            style={{ opacity: pastOpacity }}
           >
-            <defs>
-              <marker
-                id="blink-pm-arrow"
-                markerWidth="5"
-                markerHeight="5"
-                refX="3.5"
-                refY="2.5"
-                orient="auto"
-              >
-                <path d="M0,0.5 L4.5,2.5 L0,4.5 Z" fill="#FBBF24" />
-              </marker>
-            </defs>
-            <line
-              x1={e1X}
-              y1={e1Y}
-              x2={e2X}
-              y2={e2Y}
-              stroke="#FF5500"
-              strokeWidth="0.6"
-              strokeDasharray="1.8 1.3"
-              strokeOpacity="0.9"
-              markerEnd="url(#blink-pm-arrow)"
+            <img
+              src={pastHipsUrl}
+              alt="2MASS Past 2000 Sky Survey"
+              referrerPolicy="no-referrer"
+              onLoad={() => setPastSurveyLoaded(true)}
+              onError={() => setPastSurveyLoaded(false)}
+              className={`h-full w-full object-cover transition-opacity duration-300 ${
+                pastSurveyLoaded ? 'opacity-70' : 'opacity-0'
+              }`}
             />
-            <circle
-              cx={e1X}
-              cy={e1Y}
-              r="3.2"
-              fill="none"
-              stroke="#FF5500"
-              strokeWidth="0.55"
-              strokeDasharray="1.2 1"
-              strokeOpacity="0.85"
+            <canvas
+              ref={pastCanvasRef}
+              className="absolute inset-0 h-full w-full object-cover"
+              style={{
+                mixBlendMode: pastSurveyLoaded ? 'screen' : 'normal',
+              }}
             />
-            <circle
-              cx={e2X}
-              cy={e2Y}
-              r="3.6"
-              fill="none"
-              stroke="#FBBF24"
-              strokeWidth="0.55"
-              strokeOpacity="0.85"
+          </div>
+
+          {/* Epoch 2: CDS allWISE Survey Backdrop + Bicubic ZScale FITS Canvas */}
+          <div
+            className="pointer-events-none absolute inset-0 transition-opacity duration-150"
+            style={{ opacity: presentOpacity }}
+          >
+            <img
+              src={presentHipsUrl}
+              alt="allWISE SPHEREx Now Sky Survey"
+              referrerPolicy="no-referrer"
+              onLoad={() => setPresentSurveyLoaded(true)}
+              onError={() => setPresentSurveyLoaded(false)}
+              className={`h-full w-full object-cover transition-opacity duration-300 ${
+                presentSurveyLoaded ? 'opacity-70' : 'opacity-0'
+              }`}
             />
-          </svg>
-        )}
+            <canvas
+              ref={presentCanvasRef}
+              className="absolute inset-0 h-full w-full object-cover"
+              style={{
+                mixBlendMode: presentSurveyLoaded ? 'screen' : 'normal',
+              }}
+            />
+          </div>
+
+          {/* Interactive Golden Proper Motion Vector Overlay */}
+          <KinematicVectorOverlay
+            epoch1Norm={{
+              x: transientAnalysis.epoch1Footprint.normX,
+              y: transientAnalysis.epoch1Footprint.normY,
+            }}
+            epoch2Norm={{
+              x: transientAnalysis.epoch2Detection.normX,
+              y: transientAnalysis.epoch2Detection.normY,
+            }}
+            properMotionMasYr={transientAnalysis.vectorDistMasYr}
+            displacementArcsec={transientAnalysis.vectorDistArcsec}
+            displacementPx={transientAnalysis.vectorDistPx}
+            visible={showVectorOverlay}
+          />
+
+          {/* Glowing Emerald Locked Target Ring */}
+          {targetLocked && (
+            <div
+              aria-hidden="true"
+              style={{
+                left: `${ringLeftPct}%`,
+                top: `${ringTopPct}%`,
+              }}
+              className="pointer-events-none absolute z-20 -translate-x-1/2 -translate-y-1/2 transition-all duration-150"
+            >
+              <div className="relative h-14 w-14 rounded-full border-2 border-emerald-400 shadow-[0_0_24px_rgba(16,185,129,0.85)]">
+                <div className="absolute -top-5 left-1/2 -translate-x-1/2 whitespace-nowrap rounded bg-emerald-500 px-1.5 py-0.5 font-mono text-[9px] font-bold text-[#050507]">
+                  LOCKED
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
 
         {/* JWST Warm Titanium Corner Reticles */}
         <div
@@ -407,24 +388,6 @@ export function BlinkComparator({
           aria-hidden="true"
           className="pointer-events-none absolute right-3 bottom-3 h-5 w-5 border-r-2 border-b-2 border-amber-400/80"
         />
-
-        {/* Glowing Emerald Locked Target Ring */}
-        {targetLocked && (
-          <div
-            aria-hidden="true"
-            style={{
-              left: `${ringLeftPct}%`,
-              top: `${ringTopPct}%`,
-            }}
-            className="pointer-events-none absolute -translate-x-1/2 -translate-y-1/2 transition-all duration-150"
-          >
-            <div className="relative h-14 w-14 animate-pulse rounded-full border-2 border-emerald-400 shadow-[0_0_24px_rgba(16,185,129,0.85)]">
-              <div className="absolute -top-5 left-1/2 -translate-x-1/2 whitespace-nowrap rounded bg-emerald-500 px-1.5 py-0.5 font-mono text-[9px] font-bold text-[#050507]">
-                LOCKED
-              </div>
-            </div>
-          </div>
-        )}
 
         {/* Top HUD Row: Active Epoch & Stack Status */}
         <div className="pointer-events-none absolute inset-x-10 top-3 flex flex-wrap items-center justify-between gap-1.5">
@@ -452,11 +415,11 @@ export function BlinkComparator({
           {transientAnalysis.isHighProperMotion ? (
             <div
               role="status"
-              title={`High Proper Motion (>50 mas/yr): Epoch 1 (−) → Epoch 2 (+) vector ${transientAnalysis.vectorDistPx.toFixed(1)} px (${transientAnalysis.vectorDxPx >= 0 ? '+' : ''}${transientAnalysis.vectorDxPx.toFixed(1)}, ${transientAnalysis.vectorDyPx >= 0 ? '+' : ''}${transientAnalysis.vectorDyPx.toFixed(1)} px)`}
+              title={`High Proper Motion (>50 mas/yr): Epoch 1 (−) → Epoch 2 (+) vector ${transientAnalysis.vectorDistPx.toFixed(1)} px (${transientAnalysis.vectorDistArcsec.toFixed(2)} arcsec)`}
               className="inline-flex items-center gap-1 rounded-md border border-[#FF5500]/80 bg-[#050507]/90 px-2 py-0.5 font-mono text-[10px] font-semibold tabular-nums text-orange-300 shadow-[0_0_16px_rgba(255,85,0,0.4)]"
             >
               <AlertTriangle
-                className="h-3 w-3 shrink-0 animate-pulse text-[#FF5500]"
+                className="h-3 w-3 shrink-0 text-[#FF5500]"
                 aria-hidden="true"
               />
               <span>Transient Alert</span>
@@ -469,7 +432,7 @@ export function BlinkComparator({
               title={`Epoch 1 (−) → Epoch 2 (+) vector ${transientAnalysis.vectorDistPx.toFixed(1)} px (<50 mas/yr threshold)`}
               className="rounded-md border border-amber-500/20 bg-[#050507]/85 px-2 py-0.5 font-mono text-[10px] tabular-nums text-slate-400"
             >
-              Δ{transientAnalysis.vectorDistPx.toFixed(1)} px ·{' '}
+              Δ{transientAnalysis.vectorDistArcsec.toFixed(2)}&quot; ·{' '}
               {transientAnalysis.vectorDistMasYr.toFixed(1)} mas/yr
             </div>
           )}
@@ -478,7 +441,7 @@ export function BlinkComparator({
 
       {/* Flipbook Speed & Manual Scrubber */}
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-500/20 bg-[#050507] px-3 py-2">
-        <div className="flex items-center gap-2.5">
+        <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
             onClick={() => setIsPlaying((p) => !p)}
@@ -495,6 +458,21 @@ export function BlinkComparator({
                 <span>Play</span>
               </>
             )}
+          </button>
+
+          <button
+            type="button"
+            aria-pressed={showVectorOverlay}
+            onClick={() => setShowVectorOverlay((prev) => !prev)}
+            title={`Toggle Epoch 1 (−) → Epoch 2 (+) golden kinematic vector overlay (${transientAnalysis.vectorDistArcsec.toFixed(2)} arcsec)`}
+            className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs font-medium transition-colors ${
+              showVectorOverlay
+                ? 'border-amber-500/60 bg-amber-500/15 text-amber-200 hover:bg-amber-500/25'
+                : 'border-amber-500/20 bg-[#0B0C10] text-slate-400 hover:text-amber-100'
+            }`}
+          >
+            <MoveUpRight className="h-3.5 w-3.5 text-amber-400" aria-hidden="true" />
+            <span>Vector Overlay</span>
           </button>
 
           <label className="flex items-center gap-1.5 font-mono text-[11px] tabular-nums text-slate-400">

@@ -35,6 +35,10 @@ interface StarAnimState {
 const CUBE_XY = 3.2;
 const CUBE_Z = 4.6;
 const DEFAULT_CAMERA_POS = new THREE.Vector3(4.3, 3.0, 4.8);
+const _raycaster = new THREE.Raycaster();
+const _pointerNdc = new THREE.Vector2();
+const _projVec = new THREE.Vector3();
+const _upAxis = new THREE.Vector3(0, 1, 0);
 
 function detectSoftwareWebGL(renderer: THREE.WebGLRenderer): boolean {
   try {
@@ -87,6 +91,10 @@ export function WebGLDataCube3D({
 }: WebGLDataCube3DProps) {
   const [view3D, setView3D] = useState<CubeViewMode>('cube');
   const [webglUnavailable, setWebglUnavailable] = useState<boolean>(false);
+  const [vectorTooltipPos, setVectorTooltipPos] = useState<{
+    x: number;
+    y: number;
+  } | null>(null);
 
   const totalBands = Math.max(2, datacube.wavelengths.length || 102);
   const activeWavelength = useMemo(() => {
@@ -112,6 +120,8 @@ export function WebGLDataCube3D({
     isSoftwareGl: boolean;
     requestRender: () => void;
     starAnim: StarAnimState | null;
+    vectorHitMeshes: THREE.Object3D[];
+    vectorMidpoint: THREE.Vector3 | null;
   } | null>(null);
 
   // Initialize Three.js WebGL scene once
@@ -386,7 +396,55 @@ export function WebGLDataCube3D({
       isSoftwareGl,
       requestRender,
       starAnim: null,
+      vectorHitMeshes: [],
+      vectorMidpoint: null,
     };
+
+    let lastRaycastMs = 0;
+    const onPointerMove = (e: PointerEvent) => {
+      const ctx = sceneCtxRef.current;
+      if (
+        !ctx ||
+        view3DRef.current !== 'gaia3d' ||
+        !ctx.vectorHitMeshes.length ||
+        !ctx.vectorMidpoint
+      ) {
+        setVectorTooltipPos(null);
+        return;
+      }
+      const now = performance.now();
+      if (now - lastRaycastMs < 48) return;
+      lastRaycastMs = now;
+
+      const rect = renderer.domElement.getBoundingClientRect();
+      if (!rect.width || !rect.height) return;
+      _pointerNdc.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+      _pointerNdc.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+
+      _raycaster.setFromCamera(_pointerNdc, camera);
+      const hits = _raycaster.intersectObjects(ctx.vectorHitMeshes, false);
+      if (hits.length > 0) {
+        _projVec.copy(ctx.vectorMidpoint).project(camera);
+        const sx = Math.max(
+          92,
+          Math.min(rect.width - 92, ((_projVec.x + 1) / 2) * rect.width)
+        );
+        const sy = Math.max(
+          42,
+          Math.min(rect.height - 42, ((-_projVec.y + 1) / 2) * rect.height)
+        );
+        setVectorTooltipPos({ x: sx, y: sy });
+      } else {
+        setVectorTooltipPos(null);
+      }
+    };
+
+    const onPointerLeave = () => {
+      setVectorTooltipPos(null);
+    };
+
+    renderer.domElement.addEventListener('pointermove', onPointerMove);
+    renderer.domElement.addEventListener('pointerleave', onPointerLeave);
 
     requestRender();
 
@@ -394,6 +452,8 @@ export function WebGLDataCube3D({
       disposed = true;
       if (rafId) window.cancelAnimationFrame(rafId);
       if (swTimerId) window.clearTimeout(swTimerId);
+      renderer.domElement.removeEventListener('pointermove', onPointerMove);
+      renderer.domElement.removeEventListener('pointerleave', onPointerLeave);
       resizeObserver.disconnect();
       controls.removeEventListener('start', onStart);
       controls.removeEventListener('change', onChange);
@@ -418,6 +478,7 @@ export function WebGLDataCube3D({
   // Toggle between 3D Spectral Cube and 3D Gaia Parallax Starfield
   useEffect(() => {
     view3DRef.current = view3D;
+    setVectorTooltipPos(null);
     const ctx = sceneCtxRef.current;
     if (!ctx) return;
     ctx.cubeGroup.visible = view3D === 'cube';
@@ -605,14 +666,10 @@ export function WebGLDataCube3D({
       };
     }
 
-    // Highlighted Target Planet X Anomaly Node (Telemetry Lock Emerald)
-    const targetGeo = new THREE.SphereGeometry(0.11, 16, 16);
-    const targetMat = new THREE.MeshBasicMaterial({ color: 0x10b981 });
-    const targetMesh = new THREE.Mesh(targetGeo, targetMat);
-    targetMesh.position.copy(planetPos);
-    ctx.gaiaGroup.add(targetMesh);
+    // 3D Kinematic Vector Overlay: Epoch 1 (Crimson) -> Epoch 2 (Cyan/Gold) via dashed golden line
+    ctx.vectorHitMeshes = [];
+    ctx.vectorMidpoint = null;
 
-    // GNN Trajectory Line + Glowing Emerald ArrowHelper
     const traj = datacube.kinematic_vector?.trajectory_points || [
       [0, 0, 18.4],
       [1.4, -0.7, 19.2],
@@ -623,22 +680,92 @@ export function WebGLDataCube3D({
         new THREE.Vector3(mapXY(tx * 4), mapXY(ty * 4), mapZPc(tz * 6 - 92))
     );
     if (trajVecs.length >= 2) {
-      const origin = trajVecs[0];
-      const tip = trajVecs[trajVecs.length - 1];
+      const origin = trajVecs[0].clone();
+      const tip = trajVecs[trajVecs.length - 1].clone();
       const dir = tip.clone().sub(origin);
       const len = Math.max(0.8, dir.length());
       dir.normalize();
+      const mid = origin.clone().addScaledVector(dir, len * 0.5);
+      ctx.vectorMidpoint = mid;
 
-      const trajGeo = new THREE.BufferGeometry().setFromPoints(trajVecs);
-      const trajMat = new THREE.LineBasicMaterial({
-        color: 0x10b981,
+      // Epoch 1 negative anomaly node (Crimson glowing core + ring)
+      const e1Core = new THREE.Mesh(
+        new THREE.SphereGeometry(0.11, 16, 16),
+        new THREE.MeshBasicMaterial({ color: 0xf43f5e })
+      );
+      e1Core.position.copy(origin);
+      ctx.gaiaGroup.add(e1Core);
+
+      const e1Halo = new THREE.Mesh(
+        new THREE.RingGeometry(0.15, 0.21, 24),
+        new THREE.MeshBasicMaterial({
+          color: 0xdc2626,
+          side: THREE.DoubleSide,
+          transparent: true,
+          opacity: 0.78,
+        })
+      );
+      e1Halo.position.copy(origin);
+      ctx.gaiaGroup.add(e1Halo);
+
+      // Epoch 2 positive detection node (Cyan core + Golden halo ring)
+      const e2Core = new THREE.Mesh(
+        new THREE.SphereGeometry(0.12, 16, 16),
+        new THREE.MeshBasicMaterial({ color: 0x22d3ee })
+      );
+      e2Core.position.copy(tip);
+      ctx.gaiaGroup.add(e2Core);
+
+      const e2Ring = new THREE.Mesh(
+        new THREE.RingGeometry(0.16, 0.23, 24),
+        new THREE.MeshBasicMaterial({
+          color: 0xf59e0b,
+          side: THREE.DoubleSide,
+          transparent: true,
+          opacity: 0.9,
+        })
+      );
+      e2Ring.position.copy(tip);
+      ctx.gaiaGroup.add(e2Ring);
+
+      // Dashed Golden Kinematic Trajectory Line (#F59E0B)
+      const trajGeo = new THREE.BufferGeometry().setFromPoints([origin, tip]);
+      const trajMat = new THREE.LineDashedMaterial({
+        color: 0xf59e0b,
+        dashSize: 0.14,
+        gapSize: 0.1,
         transparent: true,
-        opacity: 0.9,
+        opacity: 0.96,
       });
-      ctx.gaiaGroup.add(new THREE.Line(trajGeo, trajMat));
+      const trajLine = new THREE.Line(trajGeo, trajMat);
+      trajLine.computeLineDistances();
+      ctx.gaiaGroup.add(trajLine);
 
-      const arrow = new THREE.ArrowHelper(dir, origin, len, 0x10b981, 0.28, 0.16);
-      ctx.gaiaGroup.add(arrow);
+      // Golden arrowhead cone at Epoch 2 tip
+      const headCone = new THREE.Mesh(
+        new THREE.ConeGeometry(0.085, 0.24, 14),
+        new THREE.MeshBasicMaterial({ color: 0xfbbf24 })
+      );
+      headCone.position.copy(tip).addScaledVector(dir, -0.14);
+      headCone.quaternion.setFromUnitVectors(_upAxis, dir);
+      ctx.gaiaGroup.add(headCone);
+
+      // Invisible simplified cylinder proxy for fast hover raycasting
+      const proxyMesh = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.24, 0.24, len + 0.35, 8),
+        new THREE.MeshBasicMaterial({ visible: false })
+      );
+      proxyMesh.position.copy(mid);
+      proxyMesh.quaternion.setFromUnitVectors(_upAxis, dir);
+      ctx.gaiaGroup.add(proxyMesh);
+      ctx.vectorHitMeshes.push(proxyMesh, e1Core, e2Core);
+    } else {
+      const fallbackMesh = new THREE.Mesh(
+        new THREE.SphereGeometry(0.11, 16, 16),
+        new THREE.MeshBasicMaterial({ color: 0x22d3ee })
+      );
+      fallbackMesh.position.copy(planetPos);
+      ctx.gaiaGroup.add(fallbackMesh);
     }
 
     ctx.requestRender();
@@ -665,6 +792,8 @@ export function WebGLDataCube3D({
   const pmRa = datacube.kinematic_vector?.pm_ra ?? 14.2;
   const pmDec = datacube.kinematic_vector?.pm_dec ?? -6.8;
   const radialVel = datacube.kinematic_vector?.radial_vel ?? 41.5;
+  const pmTotal3D = Math.hypot(pmRa, pmDec);
+  const displacementArcsec3D = (pmTotal3D * 25) / 1000;
 
   return (
     <div data-tour="step-3" className="flex flex-col rounded-xl">
@@ -728,11 +857,30 @@ export function WebGLDataCube3D({
           </p>
         </div>
       ) : (
-        <div
-          ref={mountRef}
-          aria-label="Interactive Three.js WebGL 3D visualization"
-          className="h-60 w-full cursor-grab overflow-hidden rounded-xl border border-amber-500/25 bg-[#050507] active:cursor-grabbing"
-        />
+        <div className="relative h-60 w-full overflow-hidden rounded-xl border border-amber-500/25 bg-[#050507]">
+          <div
+            ref={mountRef}
+            aria-label="Interactive Three.js WebGL 3D visualization"
+            className="h-full w-full cursor-grab active:cursor-grabbing"
+          />
+          {view3D === 'gaia3d' && vectorTooltipPos && (
+            <div
+              role="tooltip"
+              style={{
+                left: `${vectorTooltipPos.x}px`,
+                top: `${vectorTooltipPos.y}px`,
+              }}
+              className="pointer-events-none absolute z-10 -translate-x-1/2 -translate-y-1/2 rounded-lg border border-amber-500/45 bg-[#050507]/95 px-2.5 py-1.5 font-mono text-[10px] shadow-[0_0_20px_rgba(245,158,11,0.3)]"
+            >
+              <div className="whitespace-nowrap font-semibold text-amber-300">
+                Proper Motion (μ): +{pmTotal3D.toFixed(1)} mas/yr
+              </div>
+              <div className="mt-0.5 whitespace-nowrap text-cyan-300">
+                Displacement: {displacementArcsec3D.toFixed(2)} arcsec
+              </div>
+            </div>
+          )}
+        </div>
       )}
 
       {/* 1-line helper label */}
