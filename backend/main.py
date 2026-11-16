@@ -1,4 +1,5 @@
 import asyncio
+from contextlib import asynccontextmanager
 import json
 import os
 import sys
@@ -7,7 +8,7 @@ from typing import List, Optional
 # Ensure 'backend/' is on sys.path so 'from server...' and 'from services...' work cleanly
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from fastapi import FastAPI, Query, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, Query, Response, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -15,14 +16,19 @@ from database import get_feedback_stats, init_db, record_rlhf_vote
 from server.spherex_pipeline import pipeline
 from services.ml_pipeline import tri_model_pipeline
 
-init_db()
 
-app = FastAPI(title="Space-Max 0 Discovery Engine")
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    init_db()
+    yield
+
+
+app = FastAPI(title="Space-Max 0 Discovery Engine", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -39,9 +45,19 @@ class RLHFFeedbackPayload(BaseModel):
     csa_vetting_status: Optional[str] = None
 
 
-@app.on_event("startup")
-def startup_event():
-    init_db()
+@app.api_route("/", methods=["GET", "HEAD"])
+def root():
+    return {
+        "status": "online",
+        "service": "space-max-0-backend",
+        "model_version": tri_model_pipeline.model_version,
+        "endpoints": ["/health", "/api/scan", "/api/datacube", "/api/feedback", "/ws/telemetry", "/docs"],
+    }
+
+
+@app.get("/favicon.ico", include_in_schema=False)
+def favicon():
+    return Response(status_code=204)
 
 
 @app.get("/health")
