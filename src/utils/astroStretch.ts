@@ -10,8 +10,8 @@ export function buildHips2FitsUrl(
   ra: number,
   dec: number,
   fovDeg: number,
-  width = 512,
-  height = 512
+  width = 640,
+  height = 380
 ): string {
   const clampedFov = Math.max(0.02, Math.min(5, fovDeg));
   const params = new URLSearchParams({
@@ -27,51 +27,94 @@ export function buildHips2FitsUrl(
   return `https://alasky.cds.unistra.fr/hips-image-services/hips2fits?${params.toString()}`;
 }
 
-/**
- * JWST Infrared Thermal Colormap:
- * Deep Carbon Obsidian (#050507) -> Deep Crimson (#7F1D1D) ->
- * Thermal Orange (#FF5500) -> Solar Gold (#F59E0B) -> Incandescent White (#FFFBEB)
- */
-export function jwstThermalRgb(norm: number): [number, number, number] {
-  const t = Math.max(0, Math.min(1, norm));
-  if (t < 0.22) {
-    const k = t / 0.22;
-    return [
-      Math.round(5 + k * 122),
-      Math.round(5 + k * 24),
-      Math.round(7 + k * 22),
-    ];
-  }
-  if (t < 0.5) {
-    const k = (t - 0.22) / 0.28;
-    return [
-      Math.round(127 + k * 128),
-      Math.round(29 + k * 56),
-      Math.round(29 - k * 29),
-    ];
-  }
-  if (t < 0.78) {
-    const k = (t - 0.5) / 0.28;
-    return [
-      Math.round(255 - k * 10),
-      Math.round(85 + k * 73),
-      Math.round(0 + k * 11),
-    ];
-  }
-  const k = (t - 0.78) / 0.22;
+function lerpChannel(a: number, b: number, t: number): number {
+  return Math.round(a + (b - a) * t);
+}
+
+function lerpTuple(
+  c1: [number, number, number],
+  c2: [number, number, number],
+  t: number
+): [number, number, number] {
   return [
-    Math.round(245 + k * 10),
-    Math.round(158 + k * 93),
-    Math.round(11 + k * 224),
+    lerpChannel(c1[0], c2[0], t),
+    lerpChannel(c1[1], c2[1], t),
+    lerpChannel(c1[2], c2[2], t),
   ];
 }
 
-export function jwstThermalRgbFloat(norm: number): [number, number, number] {
-  const [r, g, b] = jwstThermalRgb(norm);
+/**
+ * High-Definition Space Telescope Colormap:
+ * Deep Cosmic Void (#050711) -> Midnight Indigo (#15193B) -> Celestial Cyan/Blue (#0E7490)
+ * -> Warm Infrared Amber (#F59E0B) -> Solar Gold (#FDE047) -> Incandescent White Core (#FFFFFF)
+ */
+export function multiSpectralSpaceRgb(norm: number): [number, number, number] {
+  const t = Math.max(0, Math.min(1, norm));
+  const stops: Array<{ p: number; rgb: [number, number, number] }> = [
+    { p: 0.0, rgb: [4, 6, 14] },
+    { p: 0.16, rgb: [18, 22, 56] },
+    { p: 0.36, rgb: [165, 24, 72] },
+    { p: 0.58, rgb: [249, 115, 22] },
+    { p: 0.8, rgb: [253, 224, 71] },
+    { p: 1.0, rgb: [255, 255, 255] },
+  ];
+
+  for (let i = 0; i < stops.length - 1; i += 1) {
+    const cur = stops[i];
+    const nxt = stops[i + 1];
+    if (t <= nxt.p) {
+      const k = (t - cur.p) / Math.max(1e-6, nxt.p - cur.p);
+      return lerpTuple(cur.rgb, nxt.rgb, k);
+    }
+  }
+  return [255, 255, 255];
+}
+
+export function multiSpectralSpaceRgbFloat(norm: number): [number, number, number] {
+  const [r, g, b] = multiSpectralSpaceRgb(norm);
   return [r / 255, g / 255, b / 255];
 }
 
-function seededRand(seed: number): () => number {
+export const jwstThermalRgb = multiSpectralSpaceRgb;
+export const jwstThermalRgbFloat = multiSpectralSpaceRgbFloat;
+
+/**
+ * Wavelength-indexed RGB coloring for 3D IFU Volumetric Data Cube:
+ * - Band 1-2 (0.75-1.5 um): Electric Cyan (#00F0FF) -> Celestial Azure (#38BDF8)
+ * - Band 3   (1.5-2.4 um): Bio-Emerald (#10B981) -> Chartreuse (#A3E635)
+ * - Band 4   (2.4-3.8 um): Solar Gold (#FBBF24) -> Thermal Orange (#F97316)
+ * - Band 5-6 (3.8-5.0 um): Plasma Rose-Magenta (#F43F5E) -> Neon Pink (#EC4899)
+ */
+export function spectralBandRgbFloat(
+  zNorm: number,
+  fluxNorm: number
+): [number, number, number] {
+  const z = Math.max(0, Math.min(1, zNorm));
+  const f = Math.max(0.22, Math.min(1, fluxNorm));
+  let base: [number, number, number];
+
+  if (z < 0.25) {
+    const k = z / 0.25;
+    base = lerpTuple([0, 240, 255], [56, 189, 248], k);
+  } else if (z < 0.5) {
+    const k = (z - 0.25) / 0.25;
+    base = lerpTuple([16, 185, 129], [163, 230, 53], k);
+  } else if (z < 0.76) {
+    const k = (z - 0.5) / 0.26;
+    base = lerpTuple([251, 191, 36], [249, 115, 22], k);
+  } else {
+    const k = (z - 0.76) / 0.24;
+    base = lerpTuple([244, 63, 94], [236, 72, 153], k);
+  }
+
+  const hotMix = Math.pow(f, 3.2) * 0.14;
+  const r = ((base[0] * (0.48 + 0.52 * f)) / 255) * (1 - hotMix) + hotMix;
+  const g = ((base[1] * (0.48 + 0.52 * f)) / 255) * (1 - hotMix) + hotMix;
+  const b = ((base[2] * (0.48 + 0.52 * f)) / 255) * (1 - hotMix) + hotMix;
+  return [Math.min(1, r), Math.min(1, g), Math.min(1, b)];
+}
+
+export function seededRand(seed: number): () => number {
   let state = Math.floor(Math.abs(seed * 10000)) % 2147483647;
   if (state <= 0) state = 1337;
   return () => {
@@ -81,8 +124,8 @@ function seededRand(seed: number): () => number {
 }
 
 /**
- * Generates a physically realistic 32x32 SPHEREx FITS cutout matrix (in MJy/sr-scaled units)
- * for instant-boot preview or when the backend supplies pre-rendered PNG cutouts.
+ * Generates a crisp, high-definition 32x32 SPHEREx FITS cutout matrix (sigma ~ 0.95-1.2 px)
+ * so stars and the moving candidate have sharp optical cores instead of blurry red blobs.
  */
 export function buildSyntheticFitsEpochMatrices(
   ra: number,
@@ -99,18 +142,18 @@ export function buildSyntheticFitsEpochMatrices(
   const presentTargetY = motion.presentY * (size - 1);
 
   const bgStars: Array<{ x: number; y: number; amp: number; beta: number; alpha: number }> = [];
-  for (let i = 0; i < 9; i += 1) {
-    const sx = 3 + rand() * (size - 6);
-    const sy = 3 + rand() * (size - 6);
-    const farPast = Math.hypot(sx - pastTargetX, sy - pastTargetY) > 4.0;
-    const farPres = Math.hypot(sx - presentTargetX, sy - presentTargetY) > 4.0;
+  for (let i = 0; i < 14; i += 1) {
+    const sx = 2 + rand() * (size - 4);
+    const sy = 2 + rand() * (size - 4);
+    const farPast = Math.hypot(sx - pastTargetX, sy - pastTargetY) > 3.2;
+    const farPres = Math.hypot(sx - presentTargetX, sy - presentTargetY) > 3.2;
     if (farPast && farPres) {
       bgStars.push({
         x: sx,
         y: sy,
-        amp: 0.45 + rand() * 0.72,
-        alpha: 1.45 + rand() * 0.35,
-        beta: 2.6,
+        amp: 0.38 + rand() * 0.68,
+        alpha: 0.9 + rand() * 0.28,
+        beta: 2.8,
       });
     }
   }
@@ -118,7 +161,7 @@ export function buildSyntheticFitsEpochMatrices(
   const moffat = (r2: number, alpha: number, beta: number) =>
     Math.pow(1 + r2 / (alpha * alpha), -beta);
 
-  const noiseAmp = stacked6Array ? 0.018 : 0.078;
+  const noiseAmp = stacked6Array ? 0.01 : 0.055;
   const epoch1: number[][] = [];
   const epoch2: number[][] = [];
 
@@ -128,10 +171,9 @@ export function buildSyntheticFitsEpochMatrices(
     for (let x = 0; x < size; x += 1) {
       const readNoise1 = (rand() - 0.5) * noiseAmp;
       const readNoise2 = (rand() - 0.5) * noiseAmp;
-      // Inject occasional single-detector cosmic-ray hot pixels that disappear in 6-array median stack
       const cosmicRay = !stacked6Array && rand() > 0.992 ? 0.85 : 0;
 
-      let starField = 0.085;
+      let starField = 0.032;
       for (const s of bgStars) {
         const d2 = (x - s.x) ** 2 + (y - s.y) ** 2;
         starField += s.amp * moffat(d2, s.alpha, s.beta);
@@ -140,8 +182,8 @@ export function buildSyntheticFitsEpochMatrices(
       const dPast2 = (x - pastTargetX) ** 2 + (y - pastTargetY) ** 2;
       const dPres2 = (x - presentTargetX) ** 2 + (y - presentTargetY) ** 2;
 
-      const pastSignal = motion.pastGlow * 1.35 * moffat(dPast2, 1.55, 2.4);
-      const presentSignal = 1.68 * moffat(dPres2, 1.55, 2.4);
+      const pastSignal = motion.pastGlow * 1.45 * moffat(dPast2, 1.05, 2.7);
+      const presentSignal = 1.82 * moffat(dPres2, 1.05, 2.7);
 
       row1.push(Number(Math.max(0.01, starField + pastSignal + readNoise1).toFixed(5)));
       row2.push(
@@ -158,8 +200,44 @@ export function buildSyntheticFitsEpochMatrices(
 }
 
 /**
- * Extracts a 32x32 scalar FITS matrix from a same-origin data:image PNG
- * rendered by the Python backend so ZScale + asinh + bicubic PSF can re-render it cleanly.
+ * Smoothly blends two 32x32 stretched FITS matrices at video interpolation factor t in [0, 1],
+ * attenuating the source/destination dipole wings while keeping stationary stars crisp.
+ */
+export function buildInterpolatedEpochGrid(
+  pastStretched: number[][],
+  presentStretched: number[][],
+  motion: TargetFrameMotion,
+  tProgress: number
+): number[][] {
+  const h = Math.min(pastStretched.length, presentStretched.length);
+  const w = Math.min(pastStretched[0]?.length || 0, presentStretched[0]?.length || 0);
+  if (!h || !w) return presentStretched;
+
+  const t = Math.max(0, Math.min(1, tProgress));
+  if (t <= 0.01) return pastStretched;
+  if (t >= 0.99) return presentStretched;
+
+  const p1x = motion.pastX * (w - 1);
+  const p1y = motion.pastY * (h - 1);
+  const p2x = motion.presentX * (w - 1);
+  const p2y = motion.presentY * (h - 1);
+
+  return Array.from({ length: h }, (_, y) =>
+    Array.from({ length: w }, (__, x) => {
+      const v1 = pastStretched[y]?.[x] ?? 0;
+      const v2 = presentStretched[y]?.[x] ?? 0;
+      // Suppress transient peaks at the opposite epoch coordinates so the target doesn't ghost
+      const d1 = (x - p1x) ** 2 + (y - p1y) ** 2;
+      const d2 = (x - p2x) ** 2 + (y - p2y) ** 2;
+      const mask1 = d1 < 7 ? v2 : v1;
+      const mask2 = d2 < 7 ? v1 : v2;
+      return mask1 * (1 - t) + mask2 * t;
+    })
+  );
+}
+
+/**
+ * Extracts a 32x32 scalar FITS matrix from a same-origin data:image PNG.
  */
 export function extract32x32FromDataUrl(dataUrl: string): Promise<number[][] | null> {
   if (typeof document === 'undefined' || !dataUrl || !dataUrl.startsWith('data:image/')) {
@@ -185,7 +263,6 @@ export function extract32x32FromDataUrl(dataUrl: string): Promise<number[][] | n
           const row: number[] = [];
           for (let x = 0; x < size; x += 1) {
             const idx = (y * size + x) * 4;
-            // Magma luminance perception weights
             const lum = (0.299 * px[idx] + 0.587 * px[idx + 1] + 0.114 * px[idx + 2]) / 255;
             row.push(Number(lum.toFixed(5)));
           }
@@ -201,9 +278,6 @@ export function extract32x32FromDataUrl(dataUrl: string): Promise<number[][] | n
   });
 }
 
-/**
- * 3x3 median filter for cosmic-ray / hot-pixel rejection in 6-camera stack mode.
- */
 function medianFilter3x3(grid: number[][]): number[][] {
   const h = grid.length;
   const w = grid[0]?.length || 0;
@@ -221,7 +295,6 @@ function medianFilter3x3(grid: number[][]): number[][] {
           count += 1;
         }
       }
-      // Keep original stellar peaks intact; only clip isolated extreme single-pixel cosmic rays
       const sorted = win.slice(0, count).sort((a, b) => a - b);
       const med = sorted[Math.floor(count / 2)];
       const val = grid[y][x];
@@ -248,9 +321,6 @@ export interface PhotometryStats {
   surfaceBrightnessMjySr: number;
 }
 
-/**
- * Astronomical ZScale + inverse hyperbolic sine (asinh) stretch.
- */
 export function zscaleAsinhStretch(
   rawMatrix: number[][],
   stacked6Array: boolean
@@ -274,14 +344,13 @@ export function zscaleAsinhStretch(
   }
   flat.sort((a, b) => a - b);
 
-  const bg = percentile(flat, 10);
+  const bg = percentile(flat, 12);
   const bgHigh = percentile(flat, 45);
   const peak = percentile(flat, 99.5);
   const maxAbs = flat[flat.length - 1] ?? peak;
   const denom = Math.max(1e-6, peak - bg);
-  const asinhDenom = Math.asinh(12);
+  const asinhDenom = Math.asinh(14);
 
-  // Estimate RMS noise in sky annulus (10th to 45th percentile)
   const skySamples = flat.filter((v) => v <= bgHigh);
   const skyMean =
     skySamples.reduce((acc, v) => acc + v, 0) / Math.max(1, skySamples.length);
@@ -299,7 +368,7 @@ export function zscaleAsinhStretch(
     Array.from({ length: w }, (__, x) => {
       const val = working[y]?.[x] ?? bg;
       const norm = Math.max(0, val - bg) / denom;
-      return Math.min(1.08, Math.asinh(12 * norm) / asinhDenom);
+      return Math.min(1.06, Math.asinh(14 * norm) / asinhDenom);
     })
   );
 
@@ -309,9 +378,6 @@ export function zscaleAsinhStretch(
   };
 }
 
-/**
- * Catmull-Rom 1D cubic kernel
- */
 function cubicInterp(p0: number, p1: number, p2: number, p3: number, t: number): number {
   const t2 = t * t;
   const t3 = t2 * t;
@@ -324,9 +390,6 @@ function cubicInterp(p0: number, p1: number, p2: number, p3: number, t: number):
   );
 }
 
-/**
- * Smooth sub-pixel bicubic sampler on a 2D matrix.
- */
 export function sampleBicubic(grid: number[][], gx: number, gy: number): number {
   const h = grid.length;
   const w = grid[0]?.length || 0;
@@ -363,74 +426,113 @@ export interface MoffatOverlaySource {
 }
 
 /**
- * Renders a 32x32 stretched FITS array onto a high-DPI 256x256 canvas using
- * smooth bicubic upsampling + radial Moffat/Airy optical PSF glow + JWST Infrared Thermal colormap.
- * Background below noise floor stays transparent/translucent so underlying CDS HiPS2FITS imagery shines through.
+ * Renders a crisp high-definition NASA space telescope frame:
+ * - Tight Gaussian/Moffat optical core (no muddy red blobs!) with incandescent white-gold/cyan center
+ * - Sharp 6-point JWST/SPHEREx diffraction spikes on target & brightest stars
+ * - 115+ pinpoint multi-temperature background field stars
+ * - Subtle WCS tangent coordinate grid + N/E astronomical compass + arcsecond scale bar
  */
 export function renderStretchedFitsToCanvas(
   canvas: HTMLCanvasElement,
   stretchedGrid: number[][],
   options: {
     size?: number;
+    width?: number;
+    height?: number;
+    seed?: number;
+    fovDeg?: number;
+    showCompassAndScale?: boolean;
     transparentBackground?: boolean;
     targetHighlight?: MoffatOverlaySource | null;
     stacked6Array: boolean;
   }
 ): void {
-  const size = options.size ?? 256;
-  canvas.width = size;
-  canvas.height = size;
+  const width = options.width ?? options.size ?? 512;
+  const height = options.height ?? options.size ?? 320;
+  canvas.width = width;
+  canvas.height = height;
   const ctx = canvas.getContext('2d');
   if (!ctx || !stretchedGrid.length) return;
 
   const gh = stretchedGrid.length;
   const gw = stretchedGrid[0]?.length || 32;
-  const imgData = ctx.createImageData(size, size);
+  const imgData = ctx.createImageData(width, height);
 
-  const txPx = options.targetHighlight ? options.targetHighlight.normX * size : -999;
-  const tyPx = options.targetHighlight ? options.targetHighlight.normY * size : -999;
+  const txPx = options.targetHighlight ? options.targetHighlight.normX * width : -999;
+  const tyPx = options.targetHighlight ? options.targetHighlight.normY * height : -999;
   const targetBoost = options.targetHighlight?.intensity ?? 0;
 
-  for (let py = 0; py < size; py += 1) {
-    const gy = (py / (size - 1)) * (gh - 1);
-    for (let px = 0; px < size; px += 1) {
-      const gx = (px / (size - 1)) * (gw - 1);
-      let val = sampleBicubic(stretchedGrid, gx, gy);
+  // Identify crisp bright background peaks from the FITS matrix for sharp optical cores & spikes
+  const brightPeaks: Array<{ px: number; py: number; amp: number }> = [];
+  for (let sy = 2; sy < gh - 2; sy += 2) {
+    for (let sx = 2; sx < gw - 2; sx += 2) {
+      const v = stretchedGrid[sy]?.[sx] ?? 0;
+      if (v > 0.52) {
+        const px = (sx / Math.max(1, gw - 1)) * width;
+        const py = (sy / Math.max(1, gh - 1)) * height;
+        if (Math.hypot(px - txPx, py - tyPx) > 18) {
+          brightPeaks.push({ px, py, amp: Math.min(0.95, v) });
+        }
+      }
+    }
+  }
+  const topSpikes = brightPeaks.sort((a, b) => b.amp - a.amp).slice(0, 7);
 
-      // Radial Moffat optical PSF + faint Airy diffraction spikes on the primary candidate
+  for (let py = 0; py < height; py += 1) {
+    const gy = (py / Math.max(1, height - 1)) * (gh - 1);
+    for (let px = 0; px < width; px += 1) {
+      const gx = (px / Math.max(1, width - 1)) * (gw - 1);
+      // Contrast-sculpted bicubic FITS base so sky background stays deep cosmic void (#04060E)
+      const rawBicubic = sampleBicubic(stretchedGrid, gx, gy);
+      let val = Math.pow(Math.max(0, rawBicubic - 0.12) / 0.88, 1.48) * 0.72;
+
+      // Sharp stationary field stars with pinpoint cores & micro 6-point spikes
+      for (let k = 0; k < topSpikes.length; k += 1) {
+        const s = topSpikes[k];
+        const dx = px - s.px;
+        const dy = py - s.py;
+        const r2 = dx * dx + dy * dy;
+        if (r2 < 540) {
+          const r = Math.sqrt(r2);
+          const angle = Math.atan2(dy, dx);
+          const hexSpike = Math.pow(Math.abs(Math.cos(3 * angle)), 42);
+          const core = s.amp * 0.95 * Math.pow(1 + r2 / 11, -2.8);
+          const spike = s.amp * 0.28 * hexSpike * Math.exp(-r / 15);
+          val = Math.min(1, Math.max(val, core + spike));
+        }
+      }
+
+      // Primary Planet X / Brown Dwarf target: razor-sharp white-gold/cyan PSF + subtle halo + 6-point JWST rays
       if (targetBoost > 0) {
         const dx = px - txPx;
         const dy = py - tyPx;
         const r2 = dx * dx + dy * dy;
-        const moffatCore = targetBoost * Math.pow(1 + r2 / 145, -2.3);
-        const airyHalo = targetBoost * 0.22 * Math.exp(-r2 / 920);
-        // Subtle 6-point JWST hexagonal diffraction spikes
+        const r = Math.sqrt(r2);
+        const moffatCore = targetBoost * 1.15 * Math.pow(1 + r2 / 18, -2.55);
+        const airyHalo = targetBoost * 0.24 * Math.exp(-r2 / 160);
         const angle = Math.atan2(dy, dx);
-        const spikePattern = Math.pow(Math.abs(Math.cos(3 * angle)), 18);
-        const spike =
-          targetBoost * 0.18 * spikePattern * Math.exp(-Math.sqrt(r2) / 26);
+        const spikePattern = Math.pow(Math.abs(Math.cos(3 * angle)), 40);
+        const spike = targetBoost * 0.42 * spikePattern * Math.exp(-r / 24);
         val = Math.min(1, Math.max(val, moffatCore + airyHalo + spike));
       }
 
       if (!options.stacked6Array) {
-        // Subtle realistic detector read noise speckle in Single Camera mode
         const hash = Math.sin(px * 12.9898 + py * 78.233) * 43758.5453;
-        const speckle = (hash - Math.floor(hash) - 0.5) * 0.09;
+        const speckle = (hash - Math.floor(hash) - 0.5) * 0.065;
         val = Math.max(0, Math.min(1, val + speckle));
       }
 
-      const [r, g, b] = jwstThermalRgb(val);
-      const outIdx = (py * size + px) * 4;
+      const [r, g, b] = multiSpectralSpaceRgb(val);
+      const outIdx = (py * width + px) * 4;
       imgData.data[outIdx] = r;
       imgData.data[outIdx + 1] = g;
       imgData.data[outIdx + 2] = b;
 
       if (options.transparentBackground) {
-        // Keep dark sky transparent so real CDS 2MASS / allWISE photography stays crisp underneath
         const alpha =
-          val < 0.08
-            ? Math.round(val * 400)
-            : Math.round(Math.min(245, 32 + Math.pow(val, 1.08) * 223));
+          val < 0.09
+            ? Math.round(val * 240)
+            : Math.round(Math.min(238, 22 + Math.pow(val, 1.04) * 218));
         imgData.data[outIdx + 3] = alpha;
       } else {
         imgData.data[outIdx + 3] = 255;
@@ -439,12 +541,153 @@ export function renderStretchedFitsToCanvas(
   }
 
   ctx.putImageData(imgData, 0, 0);
+
+  // Add 118 sharp pinpoint multi-temperature deep-field background stars
+  const rand = seededRand((options.seed ?? 166.33) * 19.7 + (options.stacked6Array ? 1 : 2));
+  const starCount = options.stacked6Array ? 118 : 92;
+  for (let i = 0; i < starCount; i += 1) {
+    const sx = 6 + rand() * (width - 12);
+    const sy = 6 + rand() * (height - 12);
+    const magRoll = rand();
+    const radius = magRoll > 0.93 ? 1.55 + rand() * 0.65 : 0.45 + rand() * 0.95;
+    const brightness = 0.35 + rand() * 0.65;
+    const tempRoll = rand();
+    let colorStr = `rgba(224, 242, 254, ${brightness.toFixed(2)})`;
+    if (tempRoll < 0.28) {
+      colorStr = `rgba(0, 240, 255, ${(brightness * 0.92).toFixed(2)})`;
+    } else if (tempRoll > 0.72) {
+      colorStr = `rgba(253, 224, 71, ${(brightness * 0.9).toFixed(2)})`;
+    } else if (tempRoll > 0.6) {
+      colorStr = `rgba(251, 113, 133, ${(brightness * 0.8).toFixed(2)})`;
+    }
+
+    // Crisp pinpoint stellar core
+    ctx.fillStyle = magRoll > 0.9 ? 'rgba(255,255,255,0.95)' : colorStr;
+    ctx.beginPath();
+    ctx.arc(sx, sy, radius, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Subtle halo + 6-point JWST micro-spikes on brightest field stars
+    if (magRoll > 0.92) {
+      const halo = ctx.createRadialGradient(sx, sy, 0, sx, sy, radius * 4.2);
+      halo.addColorStop(0, colorStr);
+      halo.addColorStop(1, 'rgba(4, 6, 14, 0)');
+      ctx.fillStyle = halo;
+      ctx.beginPath();
+      ctx.arc(sx, sy, radius * 4.2, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.42)';
+      ctx.lineWidth = 0.7;
+      for (let a = 0; a < 3; a += 1) {
+        const ang = (a * Math.PI) / 3;
+        const len = 6.5;
+        ctx.beginPath();
+        ctx.moveTo(sx - Math.cos(ang) * len, sy - Math.sin(ang) * len);
+        ctx.lineTo(sx + Math.cos(ang) * len, sy + Math.sin(ang) * len);
+        ctx.stroke();
+      }
+    }
+  }
+
+  // Cyan/White incandescent core flare at exact target highlight center
+  if (targetBoost > 0 && txPx > 0 && tyPx > 0) {
+    const coreGrad = ctx.createRadialGradient(txPx, tyPx, 0, txPx, tyPx, 10);
+    coreGrad.addColorStop(0, 'rgba(255, 255, 255, 0.98)');
+    coreGrad.addColorStop(0.28, 'rgba(253, 224, 71, 0.85)');
+    coreGrad.addColorStop(0.65, 'rgba(0, 240, 255, 0.35)');
+    coreGrad.addColorStop(1, 'rgba(0, 240, 255, 0)');
+    ctx.fillStyle = coreGrad;
+    ctx.beginPath();
+    ctx.arc(txPx, tyPx, 10, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // Semi-transparent WCS Coordinate Grid Overlay
+  ctx.save();
+  ctx.strokeStyle = 'rgba(0, 240, 255, 0.1)';
+  ctx.lineWidth = 1;
+  for (let c = 1; c < 4; c += 1) {
+    const x = (c / 4) * width;
+    ctx.beginPath();
+    ctx.moveTo(x, 0);
+    ctx.lineTo(x, height);
+    ctx.stroke();
+  }
+  for (let r = 1; r < 3; r += 1) {
+    const y = (r / 3) * height;
+    ctx.beginPath();
+    ctx.moveTo(0, y);
+    ctx.lineTo(width, y);
+    ctx.stroke();
+  }
+
+  // Edge WCS tick marks
+  ctx.strokeStyle = 'rgba(56, 189, 248, 0.32)';
+  for (let i = 1; i < 8; i += 1) {
+    const tx = (i / 8) * width;
+    ctx.beginPath();
+    ctx.moveTo(tx, 0);
+    ctx.lineTo(tx, 5);
+    ctx.moveTo(tx, height - 5);
+    ctx.lineTo(tx, height);
+    ctx.stroke();
+  }
+
+  // Subtle N / E Astronomical Compass & Arcsecond Scale Bar (bottom-left/right corners)
+  if (options.showCompassAndScale !== false) {
+    const cx = 24;
+    const cy = height - 42;
+    ctx.strokeStyle = 'rgba(0, 240, 255, 0.65)';
+    ctx.lineWidth = 1.1;
+    // North up
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.lineTo(cx, cy - 14);
+    ctx.moveTo(cx - 2.5, cy - 10);
+    ctx.lineTo(cx, cy - 14);
+    ctx.lineTo(cx + 2.5, cy - 10);
+    // East left
+    ctx.moveTo(cx, cy);
+    ctx.lineTo(cx - 14, cy);
+    ctx.moveTo(cx - 10, cy - 2.5);
+    ctx.lineTo(cx - 14, cy);
+    ctx.lineTo(cx - 10, cy + 2.5);
+    ctx.stroke();
+
+    ctx.fillStyle = 'rgba(186, 230, 253, 0.78)';
+    ctx.font = '600 8.5px "JetBrains Mono", monospace';
+    ctx.fillText('N', cx - 3, cy - 17);
+    ctx.fillText('E', cx - 22, cy + 3);
+
+    if (typeof options.fovDeg === 'number') {
+      const fovArcsec = options.fovDeg * 3600;
+      const barPx = width * 0.16;
+      const barArcsec = fovArcsec * 0.16;
+      const barLabel =
+        barArcsec >= 60 ? `${(barArcsec / 60).toFixed(1)}'` : `${barArcsec.toFixed(0)}"`;
+      const rx1 = 36;
+      const rx2 = rx1 + barPx;
+      const ry = height - 42;
+      ctx.strokeStyle = 'rgba(253, 224, 71, 0.75)';
+      ctx.beginPath();
+      ctx.moveTo(rx1, ry - 3);
+      ctx.lineTo(rx1, ry);
+      ctx.lineTo(rx2, ry);
+      ctx.lineTo(rx2, ry - 3);
+      ctx.stroke();
+      ctx.fillStyle = 'rgba(253, 224, 71, 0.85)';
+      ctx.fillText(barLabel, rx1 + 4, ry - 4);
+    }
+  }
+  ctx.restore();
 }
 
 /**
- * Renders the 256x256 smooth bicubic differential photometry dipole (Epoch 2 Now - Epoch 1 Past)
- * with stationary stars canceled cleanly, Epoch 1 crimson/magenta negative footprint,
- * Epoch 2 gold/cyan positive detection, proper-motion vector arrow, and arcsecond scale bar.
+ * Renders the clean differential photometry dipole (Epoch 2 Now - Epoch 1 Past):
+ * - Stationary stars canceled cleanly into #060913 zero-flux floor with faint dashed rings.
+ * - Epoch 1 (2000) Negative Footprint glows Plasma Crimson-Magenta (#F43F5E).
+ * - Epoch 2 (SPHEREx 2025+) Positive Detection glows Electric Cyan & White-Gold (#00F0FF -> #FDE047).
  */
 export function renderDifferenceDipoleCanvas(
   canvas: HTMLCanvasElement,
@@ -456,58 +699,82 @@ export function renderDifferenceDipoleCanvas(
     pmRaMasYr: number;
     pmDecMasYr: number;
     stacked6Array: boolean;
+    width?: number;
+    height?: number;
   }
 ): void {
-  const size = 256;
-  canvas.width = size;
-  canvas.height = size;
+  const width = options.width ?? 512;
+  const height = options.height ?? 304;
+  canvas.width = width;
+  canvas.height = height;
   const ctx = canvas.getContext('2d');
   if (!ctx || !pastStretched.length || !presentStretched.length) return;
 
   const gh = presentStretched.length;
   const gw = presentStretched[0]?.length || 32;
-  const imgData = ctx.createImageData(size, size);
+  const imgData = ctx.createImageData(width, height);
 
-  const pastCx = options.motion.pastX * size;
-  const pastCy = options.motion.pastY * size;
-  const presCx = options.motion.presentX * size;
-  const presCy = options.motion.presentY * size;
+  const pastCx = options.motion.pastX * width;
+  const pastCy = options.motion.pastY * height;
+  const presCx = options.motion.presentX * width;
+  const presCy = options.motion.presentY * height;
 
-  for (let py = 0; py < size; py += 1) {
-    const gy = (py / (size - 1)) * (gh - 1);
-    for (let px = 0; px < size; px += 1) {
-      const gx = (px / (size - 1)) * (gw - 1);
+  const stationaryRings: Array<{ px: number; py: number }> = [];
+  for (let sy = 3; sy < gh - 3; sy += 3) {
+    for (let sx = 3; sx < gw - 3; sx += 3) {
+      const avg = ((pastStretched[sy]?.[sx] ?? 0) + (presentStretched[sy]?.[sx] ?? 0)) * 0.5;
+      const diffAbs = Math.abs((presentStretched[sy]?.[sx] ?? 0) - (pastStretched[sy]?.[sx] ?? 0));
+      if (avg > 0.45 && diffAbs < 0.25) {
+        const px = (sx / Math.max(1, gw - 1)) * width;
+        const py = (sy / Math.max(1, gh - 1)) * height;
+        if (
+          Math.hypot(px - pastCx, py - pastCy) > 24 &&
+          Math.hypot(px - presCx, py - presCy) > 24
+        ) {
+          stationaryRings.push({ px, py });
+        }
+      }
+    }
+  }
+
+  for (let py = 0; py < height; py += 1) {
+    const gy = (py / Math.max(1, height - 1)) * (gh - 1);
+    for (let px = 0; px < width; px += 1) {
+      const gx = (px / Math.max(1, width - 1)) * (gw - 1);
       const p1 = sampleBicubic(pastStretched, gx, gy);
       const p2 = sampleBicubic(presentStretched, gx, gy);
 
-      // Enhance optical PSF dipole separation cleanly
       const dPast2 = (px - pastCx) ** 2 + (py - pastCy) ** 2;
       const dPres2 = (px - presCx) ** 2 + (py - presCy) ** 2;
-      const psfPast = options.motion.pastGlow * 0.72 * Math.pow(1 + dPast2 / 120, -2.2);
-      const psfPres = 0.85 * Math.pow(1 + dPres2 / 120, -2.2);
 
-      const diff = (p2 + psfPres) - (p1 + psfPast);
-      const absD = Math.min(1, Math.abs(diff) * (options.stacked6Array ? 2.15 : 1.75));
-      const outIdx = (py * size + px) * 4;
+      const psfPast = options.motion.pastGlow * 1.18 * Math.pow(1 + dPast2 / 48, -2.4);
+      const psfPres = 1.32 * Math.pow(1 + dPres2 / 48, -2.4);
+      const localMask = Math.max(
+        Math.exp(-dPast2 / 680),
+        Math.exp(-dPres2 / 680)
+      );
+      const rawDiff = p2 - p1;
+      const maskedResidual = rawDiff * localMask * 0.4;
+      const diff = psfPres - psfPast + maskedResidual;
 
-      if (diff > 0.055) {
-        // Positive Epoch 2 detection: Solar Gold -> Cyan/Incandescent highlight
-        const k = Math.min(1, absD);
-        imgData.data[outIdx] = Math.round(60 + k * 195);
-        imgData.data[outIdx + 1] = Math.round(140 + k * 110);
-        imgData.data[outIdx + 2] = Math.round(45 + k * 195);
-      } else if (diff < -0.055) {
-        // Negative Epoch 1 archival footprint: Crimson / Magenta
-        const k = Math.min(1, absD);
-        imgData.data[outIdx] = Math.round(125 + k * 125);
-        imgData.data[outIdx + 1] = Math.round(18 + k * 42);
-        imgData.data[outIdx + 2] = Math.round(70 + k * 110);
+      const outIdx = (py * width + px) * 4;
+
+      if (diff > 0.065) {
+        const k = Math.min(1, diff * (options.stacked6Array ? 1.65 : 1.4));
+        const core = Math.pow(k, 2.0);
+        imgData.data[outIdx] = Math.round(14 + core * 241);
+        imgData.data[outIdx + 1] = Math.round(170 + k * 60 + core * 25);
+        imgData.data[outIdx + 2] = Math.round(235 + k * 20);
+      } else if (diff < -0.065) {
+        const k = Math.min(1, Math.abs(diff) * (options.stacked6Array ? 1.65 : 1.4));
+        const core = Math.pow(k, 1.9);
+        imgData.data[outIdx] = Math.round(135 + k * 115);
+        imgData.data[outIdx + 1] = Math.round(18 + core * 78);
+        imgData.data[outIdx + 2] = Math.round(62 + k * 58);
       } else {
-        // Stationary background residual ring (clean dark obsidian)
-        const base = Math.round(5 + (p1 + p2) * 8);
-        imgData.data[outIdx] = base;
-        imgData.data[outIdx + 1] = base + 1;
-        imgData.data[outIdx + 2] = base + 4;
+        imgData.data[outIdx] = 6;
+        imgData.data[outIdx + 1] = 9;
+        imgData.data[outIdx + 2] = 19;
       }
       imgData.data[outIdx + 3] = 255;
     }
@@ -515,33 +782,46 @@ export function renderDifferenceDipoleCanvas(
 
   ctx.putImageData(imgData, 0, 0);
 
-  // Subtle coordinate crosshair grid
-  ctx.strokeStyle = 'rgba(245, 158, 11, 0.14)';
+  ctx.save();
+  for (let i = 0; i < Math.min(8, stationaryRings.length); i += 1) {
+    const s = stationaryRings[i];
+    ctx.strokeStyle = 'rgba(56, 189, 248, 0.16)';
+    ctx.lineWidth = 0.8;
+    ctx.setLineDash([2, 2]);
+    ctx.beginPath();
+    ctx.arc(s.px, s.py, 7, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+  ctx.setLineDash([]);
+
+  ctx.strokeStyle = 'rgba(0, 240, 255, 0.12)';
   ctx.lineWidth = 1;
   for (let i = 1; i < 4; i += 1) {
-    const p = (i / 4) * size;
+    const x = (i / 4) * width;
     ctx.beginPath();
-    ctx.moveTo(p, 0);
-    ctx.lineTo(p, size);
+    ctx.moveTo(x, 0);
+    ctx.lineTo(x, height);
     ctx.stroke();
+  }
+  for (let j = 1; j < 3; j += 1) {
+    const y = (j / 3) * height;
     ctx.beginPath();
-    ctx.moveTo(0, p);
-    ctx.lineTo(size, p);
+    ctx.moveTo(0, y);
+    ctx.lineTo(width, y);
     ctx.stroke();
   }
 
-  // Arcsecond displacement ruler in bottom-right
   const fovArcsec = options.fovDeg * 3600;
-  const barFrac = 0.22;
-  const barPx = size * barFrac;
+  const barFrac = 0.18;
+  const barPx = width * barFrac;
   const barArcsec = fovArcsec * barFrac;
   const rulerText =
     barArcsec >= 60 ? `${(barArcsec / 60).toFixed(1)}'` : `${barArcsec.toFixed(1)}"`;
 
-  const rx1 = size - 14 - barPx;
-  const rx2 = size - 14;
-  const ry = size - 16;
-  ctx.strokeStyle = 'rgba(253, 230, 138, 0.9)';
+  const rx1 = width - 14 - barPx;
+  const rx2 = width - 14;
+  const ry = height - 14;
+  ctx.strokeStyle = 'rgba(0, 240, 255, 0.85)';
   ctx.lineWidth = 1.5;
   ctx.beginPath();
   ctx.moveTo(rx1, ry - 4);
@@ -550,11 +830,16 @@ export function renderDifferenceDipoleCanvas(
   ctx.lineTo(rx2, ry - 4);
   ctx.stroke();
 
-  ctx.fillStyle = 'rgba(253, 230, 138, 0.95)';
+  ctx.fillStyle = 'rgba(224, 242, 254, 0.92)';
   ctx.font = '600 10px "JetBrains Mono", monospace';
   ctx.textAlign = 'right';
-  ctx.fillText(`Δθ ${rulerText} · μ=${Math.hypot(options.pmRaMasYr, options.pmDecMasYr).toFixed(1)} mas/yr`, rx2, ry - 7);
+  ctx.fillText(
+    `Δθ ${rulerText} · μ=${Math.hypot(options.pmRaMasYr, options.pmDecMasYr).toFixed(1)} mas/yr`,
+    rx2,
+    ry - 7
+  );
   ctx.textAlign = 'left';
+  ctx.restore();
 }
 
 export interface TransientMotionAnalysis {
@@ -568,13 +853,6 @@ export interface TransientMotionAnalysis {
   isHighProperMotion: boolean;
 }
 
-/**
- * Calculates the displacement vector between the Epoch 1 negative footprint
- * (diff < 0 centroid) and Epoch 2 positive detection (diff > 0 centroid) in
- * the Now - Past residual matrix, converting FITS pixel displacement over
- * the 25-year archival baseline (2000 -> 2025+) into arcsecond separation and mas/yr proper motion.
- * Automatically flags high proper motion transients (> 50 mas/yr).
- */
 export function detectTransientMotionVector(
   pastStretched: number[][],
   presentStretched: number[][],
@@ -600,7 +878,6 @@ export function detectTransientMotionVector(
     };
   }
 
-  // 1. Locate global negative minimum (Epoch 1 footprint) and positive peak (Epoch 2 detection)
   let minDiff = Infinity;
   let maxDiff = -Infinity;
   let minX = Math.floor(w / 2);
@@ -627,7 +904,6 @@ export function detectTransientMotionVector(
     }
   }
 
-  // 2. Refine sub-pixel flux-weighted centroids in a 5x5 window around each dipole pole
   const computeWeightedCentroid = (
     cx: number,
     cy: number,
@@ -663,14 +939,12 @@ export function detectTransientMotionVector(
   const vectorDyPx = posC.gy - negC.gy;
   const vectorDistPx = Math.hypot(vectorDxPx, vectorDyPx);
 
-  // Calibrated 3.6" high-resolution PSF stamp over 25-year archival baseline (2000 -> 2025+)
   const stampSpanArcsec = options?.stampSpanArcsec ?? 3.6;
   const baselineYears = options?.baselineYears ?? 25;
   const normDist = vectorDistPx / Math.max(1, Math.hypot(w - 1, h - 1) / Math.SQRT2);
   const measuredArcsec = normDist * stampSpanArcsec;
   const measuredMasYr = (measuredArcsec * 1000) / baselineYears;
 
-  // If residual dipole is weak/absent (e.g. faint Epoch 1), guard against noise spikes
   const hasRealDipole = Math.abs(minDiff) > 0.08 && Math.abs(maxDiff) > 0.1;
   const effectiveMasYr = hasRealDipole
     ? measuredMasYr
@@ -700,4 +974,3 @@ export function detectTransientMotionVector(
     isHighProperMotion: effectiveMasYr > 50,
   };
 }
-

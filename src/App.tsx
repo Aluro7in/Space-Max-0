@@ -193,7 +193,6 @@ export default function App() {
   const abortControllerRef = useRef<AbortController | null>(null);
   const healthAbortRef = useRef<AbortController | null>(null);
 
-  // Sync ?ra=...&dec=...&fov=... with browser URL query string
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const params = new URLSearchParams(window.location.search);
@@ -300,7 +299,6 @@ export default function App() {
         targetDec.toFixed(6)
       )}&fov=${encodeURIComponent(targetFov.toString())}`;
 
-      // 30-second timeout for Cloud Run cold start + 2040x2040 SPHEREx AWS S3 FITS + PyTorch inference
       const timeoutId = window.setTimeout(() => controller.abort(), 30000);
 
       try {
@@ -354,7 +352,6 @@ export default function App() {
     [appendHistoryEntry]
   );
 
-  // Automatic /health ping & initial live telemetry scan on mount
   useEffect(() => {
     void pingBackendHealth(backendUrl);
     void fetchTargetTelemetry(
@@ -542,10 +539,15 @@ export default function App() {
   const epoch2Matrix = scanData.epoch2 ?? scanData.visual_assets.epoch2;
 
   return (
-    <div className="flex min-h-screen flex-col bg-[#050507] text-[#F8FAFC]">
+    <div className="flex min-h-screen flex-col bg-[#04060C] text-[#F8FAFC]">
+      {/* Subtle Dual Multi-Spectral Deep-Space Radial Aurora Backdrop */}
       <div
         aria-hidden="true"
-        className="pointer-events-none fixed inset-0 bg-[radial-gradient(ellipse_at_top,_rgba(245,158,11,0.065),transparent_58%)]"
+        className="pointer-events-none fixed inset-0"
+        style={{
+          backgroundImage:
+            'radial-gradient(circle at 18% 12%, rgba(0, 240, 255, 0.08), transparent 45%), radial-gradient(circle at 82% 18%, rgba(244, 63, 94, 0.07), transparent 48%)',
+        }}
       />
 
       {/* Top Command & Coordinate Bar */}
@@ -565,9 +567,9 @@ export default function App() {
         onStartTour={handleStartTour}
       />
 
-      {/* 3-Column Bento Workspace */}
-      <main className="relative z-10 mx-auto grid w-full max-w-[1680px] flex-1 grid-cols-1 gap-4 p-4 lg:grid-cols-12 lg:p-6">
-        {/* Left Column (5 Cols): Step 1: Spot the Moving Object! */}
+      {/* Zero-Scroll Single-Screen 1080p 3-Column Bento Workspace */}
+      <main className="relative z-10 mx-auto grid w-full max-w-[1760px] flex-1 grid-cols-1 gap-3.5 p-3 lg:h-[calc(100vh-84px)] lg:grid-cols-12 lg:overflow-hidden lg:px-5 lg:py-3">
+        {/* Left Column (5 Cols): Step 1: Spot the Moving Object */}
         <SkyViewport
           coordinates={scanData.coordinates}
           fov={fov}
@@ -577,9 +579,15 @@ export default function App() {
           epoch2Matrix={epoch2Matrix}
           datacubeSlice={activeDatacubeSlice}
           s3Source={scanData.s3_source}
+          s3BucketUri={scanData.s3_bucket_uri}
+          zodiSubtractedMjySr={scanData.zodi_subtracted_mjy_sr}
+          blankChannels={scanData.blank_channels}
+          fitsSourceMode={scanData.fits_header?.source_mode}
           sourceCount={scanData.source_detection?.total_sources_found}
           photometry={scanData.photometry}
           properMotion={scanData.ai_verdicts.proper_motion}
+          astrometry={scanData.astrometry}
+          csaVetting={scanData.partner_vetting ?? scanData.csa_neossat_vetting}
           stacked6Array={stacked6Array}
           gaiaMatched={gaiaMatched}
           onToggleStack6={handleToggleStack6}
@@ -588,14 +596,19 @@ export default function App() {
         {/* Center Column (4 Cols): Step 2: 3D Light Cube & Rainbow Fingerprint */}
         <section
           aria-label="Step 2: 3D Light Cube and Rainbow Fingerprint"
-          className="flex flex-col justify-between gap-4 rounded-2xl border border-amber-500/20 bg-[#0B0C10]/90 p-4 backdrop-blur-md lg:col-span-4"
+          className="flex flex-col justify-between gap-2.5 rounded-2xl border border-white/[0.08] bg-[#0B101E]/90 p-3.5 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.08)] backdrop-blur-xl lg:col-span-4 lg:min-h-0 lg:overflow-y-auto"
         >
           <div>
-            <h2 className="text-sm font-bold text-[#F8FAFC]">
-              Step 2: 3D Light Cube &amp; Rainbow Fingerprint
-            </h2>
-            <p className="text-[11px] text-slate-400">
-              Slice 102 invisible infrared colors to spot water &amp; methane clouds
+            <div className="flex items-center gap-2">
+              <span className="rounded-md border border-amber-400/40 bg-amber-500/15 px-1.5 py-0.5 font-mono text-[9.5px] font-bold tracking-wider text-amber-300 shadow-[0_0_10px_rgba(251,191,36,0.18)]">
+                STEP 02
+              </span>
+              <h2 className="text-sm font-bold tracking-tight text-[#F8FAFC]">
+                3D Light Cube &amp; Rainbow Fingerprint
+              </h2>
+            </div>
+            <p className="mt-0.5 text-[10px] text-sky-300/80">
+              Slice 102 infrared bands (0.75–5.0 µm) for H₂O &amp; CH₄ atmospheres
             </p>
           </div>
 
@@ -610,16 +623,28 @@ export default function App() {
             rawSpectrum={scanData.raw_spectrum}
             rnnClassification={scanData.ai_verdicts.rnn_classification}
             activeWavelength={activeWavelength}
+            blankChannels={scanData.blank_channels}
+            dichroicGapUm={scanData.dichroic_gap_um}
+            zodiSubtractedMjySr={scanData.zodi_subtracted_mjy_sr}
+            absorptionDepths={scanData.absorption_depths}
           />
         </section>
 
-        {/* Right Column (3 Cols): Visual AI Diagnostics & RLHF Citizen Science */}
+        {/* Right Column (3 Cols): AI Space Guide & Discovery Vote */}
         <DiagnosticsCopilotPanel
           coordinates={scanData.coordinates}
           aiVerdicts={scanData.ai_verdicts}
           gaiaMatched={gaiaMatched}
           copilotSummary={scanData.gemini_copilot_summary}
           backendUrl={backendUrl}
+          backendMode={backendMode}
+          csaVetting={scanData.partner_vetting ?? scanData.csa_neossat_vetting}
+          mlTelemetry={scanData.ml_telemetry}
+          knnMatches={scanData.knn_spectral_matches}
+          scanData={scanData}
+          epoch1Matrix={epoch1Matrix}
+          epoch2Matrix={epoch2Matrix}
+          rawSpectrum={scanData.raw_spectrum}
         />
       </main>
 

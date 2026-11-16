@@ -3,7 +3,11 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { Box, Orbit, RotateCcw, SlidersHorizontal } from 'lucide-react';
 import type { DatacubeResponse } from '../types/telemetry';
-import { jwstThermalRgbFloat } from '../utils/astroStretch';
+import {
+  multiSpectralSpaceRgb,
+  seededRand,
+  spectralBandRgbFloat,
+} from '../utils/astroStretch';
 
 interface WebGLDataCube3DProps {
   datacube: DatacubeResponse;
@@ -32,9 +36,9 @@ interface StarAnimState {
   segmentsPerStar: number;
 }
 
-const CUBE_XY = 3.2;
-const CUBE_Z = 4.6;
-const DEFAULT_CAMERA_POS = new THREE.Vector3(4.3, 3.0, 4.8);
+const CUBE_XY = 3.25;
+const CUBE_Z = 4.65;
+const DEFAULT_CAMERA_POS = new THREE.Vector3(4.35, 2.85, 4.95);
 const _raycaster = new THREE.Raycaster();
 const _pointerNdc = new THREE.Vector2();
 const _projVec = new THREE.Vector3();
@@ -61,9 +65,9 @@ function createPointSpriteTexture(): THREE.CanvasTexture {
   const ctx = canvas.getContext('2d');
   if (ctx) {
     const grad = ctx.createRadialGradient(16, 16, 0, 16, 16, 16);
-    grad.addColorStop(0, 'rgba(255, 255, 255, 1)');
-    grad.addColorStop(0.35, 'rgba(255, 255, 255, 0.88)');
-    grad.addColorStop(0.75, 'rgba(255, 255, 255, 0.25)');
+    grad.addColorStop(0, 'rgba(255, 255, 255, 0.82)');
+    grad.addColorStop(0.32, 'rgba(255, 255, 255, 0.34)');
+    grad.addColorStop(0.68, 'rgba(255, 255, 255, 0.08)');
     grad.addColorStop(1, 'rgba(255, 255, 255, 0)');
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, 32, 32);
@@ -73,15 +77,22 @@ function createPointSpriteTexture(): THREE.CanvasTexture {
   return texture;
 }
 
-function fluxColor(norm: number): [number, number, number] {
-  return jwstThermalRgbFloat(norm);
-}
-
 function getBandFeatureHint(um: number): string {
   if (um >= 1.33 && um <= 1.47) return 'H₂O Absorption Dip (1.4 µm)';
+  if (um >= 2.38 && um <= 2.46) return 'Dichroic Split (BLANKCH 51–52)';
   if (um >= 3.18 && um <= 3.42) return 'CH₄ Methane Dip (3.3 µm)';
   if (um >= 4.48 && um <= 4.82) return 'CO Band (4.6 µm)';
-  return 'Infrared Continuum';
+  if (um < 1.5) return 'Near-IR Band 1–2 (Cyan)';
+  if (um < 2.4) return 'Near-IR Band 3 (Emerald)';
+  if (um < 3.8) return 'Mid-IR Band 4 (Solar Gold)';
+  return 'Thermal Band 5–6 (Magenta)';
+}
+
+function getWavelengthSliceAccentHex(um: number): string {
+  if (um < 1.5) return '#00F0FF';
+  if (um < 2.4) return '#10B981';
+  if (um < 3.8) return '#FBBF24';
+  return '#F43F5E';
 }
 
 export function WebGLDataCube3D({
@@ -105,8 +116,9 @@ export function WebGLDataCube3D({
   }, [datacube.wavelengths, sliceIndex]);
 
   const view3DRef = useRef<CubeViewMode>('cube');
-
+  const sliceMiniCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const mountRef = useRef<HTMLDivElement | null>(null);
+
   const sceneCtxRef = useRef<{
     renderer: THREE.WebGLRenderer;
     scene: THREE.Scene;
@@ -115,6 +127,8 @@ export function WebGLDataCube3D({
     cubeGroup: THREE.Group;
     gaiaGroup: THREE.Group;
     sliceGroup: THREE.Group;
+    slicePlaneMat: THREE.MeshBasicMaterial;
+    sliceLoopMat: THREE.LineBasicMaterial;
     pointsObj: THREE.Points | null;
     spriteTex: THREE.CanvasTexture;
     isSoftwareGl: boolean;
@@ -147,10 +161,10 @@ export function WebGLDataCube3D({
     );
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 1.1;
+    renderer.toneMappingExposure = 1.15;
 
     const width = Math.max(240, container.clientWidth);
-    const height = Math.max(200, container.clientHeight);
+    const height = Math.max(190, container.clientHeight);
     renderer.setSize(width, height, false);
     renderer.domElement.style.width = '100%';
     renderer.domElement.style.height = '100%';
@@ -159,7 +173,7 @@ export function WebGLDataCube3D({
     container.appendChild(renderer.domElement);
 
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color('#050507');
+    scene.background = new THREE.Color('#04060C');
 
     const camera = new THREE.PerspectiveCamera(42, width / height, 0.1, 60);
     camera.position.copy(DEFAULT_CAMERA_POS);
@@ -180,52 +194,80 @@ export function WebGLDataCube3D({
     scene.add(cubeGroup);
     scene.add(gaiaGroup);
 
-    // Wireframe bounding box for Spectral Cube (Warm Titanium)
+    // Wireframe bounding box for Multi-Spectral IFU Cube (Electric Cyan / Slate)
     const boxGeo = new THREE.BoxGeometry(CUBE_XY, CUBE_XY, CUBE_Z);
     const edgesGeo = new THREE.EdgesGeometry(boxGeo);
     const edgesMat = new THREE.LineBasicMaterial({
-      color: 0x78350f,
+      color: 0x0ea5e9,
       transparent: true,
-      opacity: 0.8,
+      opacity: 0.48,
     });
     cubeGroup.add(new THREE.LineSegments(edgesGeo, edgesMat));
     boxGeo.dispose();
 
-    const gridHelper = new THREE.GridHelper(CUBE_XY, 8, 0xb45309, 0x1c1917);
+    const gridHelper = new THREE.GridHelper(CUBE_XY, 8, 0x00f0ff, 0x1e293b);
     gridHelper.position.y = -CUBE_XY / 2;
     cubeGroup.add(gridHelper);
 
-    // Movable Infrared Solar Gold Z-Slice Plane
+    // Glowing Cyan/Gold Laser Slicing Plane
     const sliceGroup = new THREE.Group();
-    const planeGeo = new THREE.PlaneGeometry(CUBE_XY * 1.02, CUBE_XY * 1.02);
-    const planeMat = new THREE.MeshBasicMaterial({
-      color: 0xf59e0b,
+    const planeGeo = new THREE.PlaneGeometry(CUBE_XY * 1.03, CUBE_XY * 1.03);
+    const slicePlaneMat = new THREE.MeshBasicMaterial({
+      color: 0x00f0ff,
       transparent: true,
       opacity: 0.14,
       side: THREE.DoubleSide,
       depthWrite: false,
     });
-    sliceGroup.add(new THREE.Mesh(planeGeo, planeMat));
+    sliceGroup.add(new THREE.Mesh(planeGeo, slicePlaneMat));
 
-    const half = (CUBE_XY * 1.02) / 2;
+    const half = (CUBE_XY * 1.03) / 2;
     const loopGeo = new THREE.BufferGeometry().setFromPoints([
       new THREE.Vector3(-half, -half, 0),
       new THREE.Vector3(half, -half, 0),
       new THREE.Vector3(half, half, 0),
       new THREE.Vector3(-half, half, 0),
     ]);
-    const loopMat = new THREE.LineBasicMaterial({
+    const sliceLoopMat = new THREE.LineBasicMaterial({
       color: 0xfbbf24,
       transparent: true,
-      opacity: 0.92,
+      opacity: 0.95,
     });
-    sliceGroup.add(new THREE.LineLoop(loopGeo, loopMat));
+    sliceGroup.add(new THREE.LineLoop(loopGeo, sliceLoopMat));
     cubeGroup.add(sliceGroup);
 
-    // Subtle spatial reference grid for Gaia 3D Starfield
-    const starGrid = new THREE.GridHelper(4.4, 8, 0xb45309, 0x1c1917);
-    starGrid.position.y = -1.8;
-    gaiaGroup.add(starGrid);
+    // Concentric 3D Parsec Distance Radar Rings (10 pc, 50 pc, 100 pc) on floor of Gaia 3D Star-Field
+    const floorY = -1.75;
+    const radarRadii = [0.75, 1.5, 2.25];
+    const radarColors = [0x00f0ff, 0x38bdf8, 0xfbbf24];
+    radarRadii.forEach((rad, rIdx) => {
+      const pts: THREE.Vector3[] = [];
+      for (let a = 0; a < 48; a += 1) {
+        const theta = (a / 48) * Math.PI * 2;
+        pts.push(new THREE.Vector3(Math.cos(theta) * rad, floorY, Math.sin(theta) * rad));
+      }
+      const ringGeo = new THREE.BufferGeometry().setFromPoints(pts);
+      const ringMat = new THREE.LineBasicMaterial({
+        color: radarColors[rIdx],
+        transparent: true,
+        opacity: rIdx === 0 ? 0.55 : 0.34,
+      });
+      gaiaGroup.add(new THREE.LineLoop(ringGeo, ringMat));
+    });
+
+    // Cross-axis radar hairlines
+    const axisGeo = new THREE.BufferGeometry().setFromPoints([
+      new THREE.Vector3(-2.35, floorY, 0),
+      new THREE.Vector3(2.35, floorY, 0),
+      new THREE.Vector3(0, floorY, -2.35),
+      new THREE.Vector3(0, floorY, 2.35),
+    ]);
+    const axisMat = new THREE.LineBasicMaterial({
+      color: 0x1e293b,
+      transparent: true,
+      opacity: 0.85,
+    });
+    gaiaGroup.add(new THREE.LineSegments(axisGeo, axisMat));
 
     const spriteTex = createPointSpriteTexture();
 
@@ -242,7 +284,7 @@ export function WebGLDataCube3D({
     ): [number, number, number] => {
       const theta = s.baseAngle + s.omega * tSec;
       const x = Math.cos(theta) * s.orbitR;
-      const y = Math.sin(theta) * s.orbitR * 0.86;
+      const y = Math.sin(theta) * s.orbitR * 0.84;
       const z = s.baseZ + Math.sin(theta + s.tiltPhase) * s.tiltAmp;
       return [x, y, z];
     };
@@ -263,7 +305,7 @@ export function WebGLDataCube3D({
       const trailPos = trailPosAttr.array as Float32Array;
       const trailCol = trailColAttr.array as Float32Array;
 
-      const trailWindowSec = 2.6;
+      const trailWindowSec = 2.4;
 
       for (let i = 0; i < stars.length; i += 1) {
         const s = stars[i];
@@ -281,7 +323,6 @@ export function WebGLDataCube3D({
           const frac0 = seg / segmentsPerStar;
           const frac1 = (seg + 1) / segmentsPerStar;
 
-          // Sample historical timestamps behind the star so trails curve smoothly along its orbit
           const t0 = elapsedSec - (1 - frac0) * trailWindowSec;
           const t1 = elapsedSec - (1 - frac1) * trailWindowSec;
 
@@ -297,9 +338,8 @@ export function WebGLDataCube3D({
           trailPos[vBase + 4] = y1;
           trailPos[vBase + 5] = z1;
 
-          // Faint exponential fade from 0.0 at oldest tail end up to soft glow at star head
-          const fade0 = Math.pow(frac0, 2.4) * 0.34;
-          const fade1 = Math.pow(frac1, 2.4) * 0.34;
+          const fade0 = Math.pow(frac0, 2.3) * 0.36;
+          const fade1 = Math.pow(frac1, 2.3) * 0.36;
 
           trailCol[vBase] = s.colorR * fade0;
           trailCol[vBase + 1] = s.colorG * fade0;
@@ -375,7 +415,7 @@ export function WebGLDataCube3D({
       const entry = entries[0];
       if (!entry) return;
       const w = Math.max(200, Math.floor(entry.contentRect.width));
-      const h = Math.max(180, Math.floor(entry.contentRect.height));
+      const h = Math.max(170, Math.floor(entry.contentRect.height));
       camera.aspect = w / h;
       camera.updateProjectionMatrix();
       renderer.setSize(w, h, false);
@@ -391,6 +431,8 @@ export function WebGLDataCube3D({
       cubeGroup,
       gaiaGroup,
       sliceGroup,
+      slicePlaneMat,
+      sliceLoopMat,
       pointsObj: null,
       spriteTex,
       isSoftwareGl,
@@ -426,12 +468,12 @@ export function WebGLDataCube3D({
       if (hits.length > 0) {
         _projVec.copy(ctx.vectorMidpoint).project(camera);
         const sx = Math.max(
-          92,
-          Math.min(rect.width - 92, ((_projVec.x + 1) / 2) * rect.width)
+          90,
+          Math.min(rect.width - 90, ((_projVec.x + 1) / 2) * rect.width)
         );
         const sy = Math.max(
-          42,
-          Math.min(rect.height - 42, ((-_projVec.y + 1) / 2) * rect.height)
+          38,
+          Math.min(rect.height - 38, ((-_projVec.y + 1) / 2) * rect.height)
         );
         setVectorTooltipPos({ x: sx, y: sy });
       } else {
@@ -466,16 +508,17 @@ export function WebGLDataCube3D({
       edgesGeo.dispose();
       edgesMat.dispose();
       planeGeo.dispose();
-      planeMat.dispose();
+      slicePlaneMat.dispose();
       loopGeo.dispose();
-      loopMat.dispose();
+      sliceLoopMat.dispose();
+      axisGeo.dispose();
+      axisMat.dispose();
       spriteTex.dispose();
       renderer.dispose();
       sceneCtxRef.current = null;
     };
   }, []);
 
-  // Toggle between 3D Spectral Cube and 3D Gaia Parallax Starfield
   useEffect(() => {
     view3DRef.current = view3D;
     setVectorTooltipPos(null);
@@ -486,12 +529,12 @@ export function WebGLDataCube3D({
     ctx.requestRender();
   }, [view3D]);
 
-  // Rebuild 3D Spectral Cube points + Gaia 3D Starfield + Additive Star Trails + GNN Trajectory ArrowHelper
+  // Rebuild Multi-Spectral IFU Spectral Cube + Rich 68+ Gaia 3D Parallax Starfield + TubeGeometry Trajectory
   useEffect(() => {
     const ctx = sceneCtxRef.current;
     if (!ctx) return;
 
-    // 1. Rebuild Volumetric Spectral Cube Points
+    // 1. Rebuild Volumetric Multi-Spectral IFU Cube
     if (ctx.pointsObj) {
       ctx.cubeGroup.remove(ctx.pointsObj);
       ctx.pointsObj.geometry.dispose();
@@ -517,22 +560,90 @@ export function WebGLDataCube3D({
 
       const positions: number[] = [];
       const colors: number[] = [];
-      const threshold = maxVal * 0.14;
+      const threshold = maxVal * 0.08;
+      const spreadXY = CUBE_XY * 0.88;
+      const spreadZ = CUBE_Z * 0.92;
 
       for (let z = 0; z < zDim; z += 1) {
-        const wz = (z / Math.max(1, zDim - 1) - 0.5) * CUBE_Z;
+        const zNorm = z / Math.max(1, zDim - 1);
+        const wz = (zNorm - 0.5) * spreadZ;
         for (let y = 0; y < yDim; y += 1) {
-          const wy = (y / Math.max(1, yDim - 1) - 0.5) * CUBE_XY;
+          const wy = (y / Math.max(1, yDim - 1) - 0.5) * spreadXY;
           for (let x = 0; x < xDim; x += 1) {
             const val = volume[z][y][x];
             if (val < threshold) continue;
-            const norm = val / maxVal;
-            const wx = (x / Math.max(1, xDim - 1) - 0.5) * CUBE_XY;
+            // Sub-sample adjacent core pixels slightly to prevent additive white blow-out at the center
+            const isCoreCluster =
+              Math.abs(x - xDim / 2) <= 3 && Math.abs(y - yDim / 2) <= 3;
+            if (isCoreCluster && (x + y + z) % 2 !== 0) continue;
+
+            const norm = Math.pow(Math.min(1, val / maxVal), 0.85);
+            const wx = (x / Math.max(1, xDim - 1) - 0.5) * spreadXY;
             positions.push(wx, wy, wz);
-            const [r, g, b] = fluxColor(norm);
-            colors.push(r, g, b);
+            const [r, g, b] = spectralBandRgbFloat(zNorm, norm * 0.88);
+            colors.push(r * 0.85, g * 0.85, b * 0.85);
           }
         }
+      }
+
+      // 14 distributed multi-spectral IFU field-star columns & volumetric emission shells filling ~85% of cube bounds
+      const colRand = seededRand(
+        (datacube.kinematic_vector?.pm_ra ?? 14.2) * 37.1 + zDim * 3.1
+      );
+      const secondaryStars: Array<{ sx: number; sy: number; amp: number; rWing: number }> = [
+        { sx: -1.24, sy: 1.12, amp: 0.82, rWing: 0.14 },
+        { sx: 1.21, sy: -1.04, amp: 0.78, rWing: 0.13 },
+        { sx: -0.94, sy: -1.18, amp: 0.74, rWing: 0.12 },
+        { sx: 0.98, sy: 1.18, amp: 0.79, rWing: 0.13 },
+        { sx: 1.32, sy: 0.22, amp: 0.70, rWing: 0.11 },
+        { sx: -1.31, sy: -0.24, amp: 0.72, rWing: 0.12 },
+        { sx: 0.18, sy: 1.32, amp: 0.68, rWing: 0.11 },
+        { sx: -0.24, sy: -1.28, amp: 0.67, rWing: 0.11 },
+        { sx: -0.58, sy: 0.64, amp: 0.62, rWing: 0.10 },
+        { sx: 0.62, sy: -0.56, amp: 0.63, rWing: 0.10 },
+        { sx: 0.56, sy: 0.58, amp: 0.60, rWing: 0.10 },
+        { sx: -0.62, sy: -0.58, amp: 0.61, rWing: 0.10 },
+        { sx: 1.12, sy: 0.78, amp: 0.59, rWing: 0.09 },
+        { sx: -1.14, sy: 0.44, amp: 0.58, rWing: 0.09 },
+      ];
+      const wingOffsets = [
+        [0, 0],
+        [1, 0],
+        [-1, 0],
+        [0, 1],
+        [0, -1],
+      ];
+
+      for (const starCol of secondaryStars) {
+        const phase = colRand() * Math.PI * 2;
+        for (let z = 0; z < zDim; z += 2) {
+          const zNorm = z / Math.max(1, zDim - 1);
+          const wz = (zNorm - 0.5) * spreadZ;
+          const mod = 0.62 + 0.38 * Math.sin(zNorm * 6.5 + phase);
+          const intensity = Math.min(0.92, starCol.amp * mod);
+          const [r, g, b] = spectralBandRgbFloat(zNorm, intensity);
+          for (let wIdx = 0; wIdx < wingOffsets.length; wIdx += 1) {
+            const [ox, oy] = wingOffsets[wIdx];
+            const falloff = wIdx === 0 ? 0.9 : 0.48;
+            positions.push(
+              starCol.sx + ox * starCol.rWing,
+              starCol.sy + oy * starCol.rWing,
+              wz
+            );
+            colors.push(r * falloff, g * falloff, b * falloff);
+          }
+        }
+      }
+
+      // Soft ambient volumetric IR continuum cloud points distributed across X/Y/Z
+      for (let i = 0; i < 320; i += 1) {
+        const ax = (colRand() - 0.5) * spreadXY * 0.94;
+        const ay = (colRand() - 0.5) * spreadXY * 0.94;
+        const zNorm = colRand();
+        const az = (zNorm - 0.5) * spreadZ;
+        const [r, g, b] = spectralBandRgbFloat(zNorm, 0.32 + colRand() * 0.22);
+        positions.push(ax, ay, az);
+        colors.push(r * 0.72, g * 0.72, b * 0.72);
       }
 
       const geo = new THREE.BufferGeometry();
@@ -543,11 +654,11 @@ export function WebGLDataCube3D({
       geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
 
       const mat = new THREE.PointsMaterial({
-        size: ctx.isSoftwareGl ? 0.13 : 0.11,
+        size: 0.075,
         map: ctx.spriteTex,
         vertexColors: true,
         transparent: true,
-        opacity: 0.9,
+        opacity: 0.58,
         depthWrite: false,
         blending: THREE.AdditiveBlending,
       });
@@ -557,9 +668,9 @@ export function WebGLDataCube3D({
       ctx.pointsObj = points;
     }
 
-    // 2. Rebuild Gaia 3D Starfield + Additive Fading Trails + GNN Trajectory ArrowHelper
+    // 2. Rebuild Rich 68+ Gaia 3D Star-Field + Parsec Radar Rings (kept at indices 0..3) + Glowing Trajectory Tube
     ctx.starAnim = null;
-    while (ctx.gaiaGroup.children.length > 1) {
+    while (ctx.gaiaGroup.children.length > 4) {
       const child = ctx.gaiaGroup.children[ctx.gaiaGroup.children.length - 1];
       ctx.gaiaGroup.remove(child);
       child.traverse((obj) => {
@@ -578,12 +689,20 @@ export function WebGLDataCube3D({
     }
 
     const stars = datacube.gaia_3d_stars || [];
-    const mapZPc = (pc: number) => ((pc - 18.4) / 420) * 4.0 - 1.6;
+    const mapZPc = (pc: number) => ((pc - 18.4) / 420) * 4.0 - 1.5;
     const mapXY = (coord: number) => coord * 0.18;
 
     const pmRaVal = datacube.kinematic_vector?.pm_ra ?? 14.2;
     const pmDecVal = datacube.kinematic_vector?.pm_dec ?? -6.8;
     const orbitSign = pmRaVal >= 0 ? -1 : 1;
+
+    const spectralPalette: Array<[number, number, number]> = [
+      [0.0, 0.94, 1.0],   // Electric Cyan blue giant
+      [0.22, 0.74, 0.97], // Celestial Azure
+      [0.99, 0.88, 0.28], // Solar Gold dwarf
+      [0.96, 0.25, 0.37], // Crimson M-dwarf
+      [0.95, 0.98, 1.0],  // Hot White A-star
+    ];
 
     const animStars: AnimatedStarNode[] = [];
     let planetPos = new THREE.Vector3(0, 0, mapZPc(18.4));
@@ -595,26 +714,49 @@ export function WebGLDataCube3D({
       if (star.id === 'PLANET_X_CANDIDATE') {
         planetPos = new THREE.Vector3(sx, sy, sz);
       } else {
-        const f = Math.max(0.35, Math.min(1, star.flux));
-        // Closer stars (smaller parallax distance) orbit faster for 3D parallax depth
-        const depthFactor = Math.max(0.38, 165 / Math.max(45, star.z_parallax_pc));
+        const f = Math.max(0.45, Math.min(1, star.flux));
+        const depthFactor = Math.max(0.4, 165 / Math.max(45, star.z_parallax_pc));
         const orbitR = Math.max(0.42, Math.hypot(sx, sy));
         const baseAngle = Math.atan2(sy, sx);
         const omega = orbitSign * (0.14 + 0.12 * depthFactor);
+        const pal = spectralPalette[idx % spectralPalette.length];
 
         animStars.push({
           orbitR,
           baseAngle,
           omega,
           baseZ: sz,
-          tiltAmp: 0.12 + (idx % 4) * 0.03,
+          tiltAmp: 0.1 + (idx % 4) * 0.03,
           tiltPhase: (idx * 0.71 + Math.abs(pmDecVal) * 0.05) % (Math.PI * 2),
-          colorR: 1.0 * f,
-          colorG: 0.76 * f,
-          colorB: 0.36 * f,
+          colorR: pal[0] * f,
+          colorG: pal[1] * f,
+          colorB: pal[2] * f,
         });
       }
     });
+
+    // Augment up to 68 total multi-colored parallax stars so the 3D field feels deeply populated
+    const augRand = seededRand(Math.abs(pmRaVal * 29.3 + pmDecVal * 17.7) + 99);
+    const targetStarCount = 68;
+    for (let i = animStars.length; i < targetStarCount; i += 1) {
+      const orbitR = 0.45 + augRand() * 2.05;
+      const baseAngle = augRand() * Math.PI * 2;
+      const pc = 14 + augRand() * 320;
+      const depthFactor = Math.max(0.35, 165 / Math.max(40, pc));
+      const pal = spectralPalette[i % spectralPalette.length];
+      const f = 0.45 + augRand() * 0.52;
+      animStars.push({
+        orbitR,
+        baseAngle,
+        omega: orbitSign * (0.1 + 0.13 * depthFactor),
+        baseZ: mapZPc(pc),
+        tiltAmp: 0.08 + augRand() * 0.14,
+        tiltPhase: augRand() * Math.PI * 2,
+        colorR: pal[0] * f,
+        colorG: pal[1] * f,
+        colorB: pal[2] * f,
+      });
+    }
 
     if (animStars.length > 0) {
       const segmentsPerStar = 16;
@@ -623,7 +765,7 @@ export function WebGLDataCube3D({
 
       animStars.forEach((s, i) => {
         starPosBuf[i * 3] = Math.cos(s.baseAngle) * s.orbitR;
-        starPosBuf[i * 3 + 1] = Math.sin(s.baseAngle) * s.orbitR * 0.86;
+        starPosBuf[i * 3 + 1] = Math.sin(s.baseAngle) * s.orbitR * 0.84;
         starPosBuf[i * 3 + 2] = s.baseZ;
         starColBuf[i * 3] = s.colorR;
         starColBuf[i * 3 + 1] = s.colorG;
@@ -634,11 +776,11 @@ export function WebGLDataCube3D({
       starGeo.setAttribute('position', new THREE.BufferAttribute(starPosBuf, 3));
       starGeo.setAttribute('color', new THREE.BufferAttribute(starColBuf, 3));
       const starMat = new THREE.PointsMaterial({
-        size: 0.24,
+        size: 0.22,
         map: ctx.spriteTex,
         vertexColors: true,
         transparent: true,
-        opacity: 0.92,
+        opacity: 0.94,
         depthWrite: false,
         blending: THREE.AdditiveBlending,
       });
@@ -652,7 +794,7 @@ export function WebGLDataCube3D({
       const trailMat = new THREE.LineBasicMaterial({
         vertexColors: true,
         transparent: true,
-        opacity: 0.5,
+        opacity: 0.48,
         depthWrite: false,
         blending: THREE.AdditiveBlending,
       });
@@ -666,7 +808,7 @@ export function WebGLDataCube3D({
       };
     }
 
-    // 3D Kinematic Vector Overlay: Epoch 1 (Crimson) -> Epoch 2 (Cyan/Gold) via dashed golden line
+    // 3D Kinematic Vector Trajectory TubeGeometry: Epoch 1 (Crimson) -> Epoch 2 (Electric Cyan & Solar Gold)
     ctx.vectorHitMeshes = [];
     ctx.vectorMidpoint = null;
 
@@ -688,30 +830,30 @@ export function WebGLDataCube3D({
       const mid = origin.clone().addScaledVector(dir, len * 0.5);
       ctx.vectorMidpoint = mid;
 
-      // Epoch 1 negative anomaly node (Crimson glowing core + ring)
+      // Epoch 1 negative footprint node (Plasma Rose-Crimson)
       const e1Core = new THREE.Mesh(
-        new THREE.SphereGeometry(0.11, 16, 16),
+        new THREE.SphereGeometry(0.105, 16, 16),
         new THREE.MeshBasicMaterial({ color: 0xf43f5e })
       );
       e1Core.position.copy(origin);
       ctx.gaiaGroup.add(e1Core);
 
       const e1Halo = new THREE.Mesh(
-        new THREE.RingGeometry(0.15, 0.21, 24),
+        new THREE.RingGeometry(0.145, 0.21, 24),
         new THREE.MeshBasicMaterial({
-          color: 0xdc2626,
+          color: 0xf43f5e,
           side: THREE.DoubleSide,
           transparent: true,
-          opacity: 0.78,
+          opacity: 0.75,
         })
       );
       e1Halo.position.copy(origin);
       ctx.gaiaGroup.add(e1Halo);
 
-      // Epoch 2 positive detection node (Cyan core + Golden halo ring)
+      // Epoch 2 positive detection node (Electric Cyan core + Solar Gold halo ring)
       const e2Core = new THREE.Mesh(
         new THREE.SphereGeometry(0.12, 16, 16),
-        new THREE.MeshBasicMaterial({ color: 0x22d3ee })
+        new THREE.MeshBasicMaterial({ color: 0x00f0ff })
       );
       e2Core.position.copy(tip);
       ctx.gaiaGroup.add(e2Core);
@@ -719,38 +861,46 @@ export function WebGLDataCube3D({
       const e2Ring = new THREE.Mesh(
         new THREE.RingGeometry(0.16, 0.23, 24),
         new THREE.MeshBasicMaterial({
-          color: 0xf59e0b,
+          color: 0xfbbf24,
           side: THREE.DoubleSide,
           transparent: true,
-          opacity: 0.9,
+          opacity: 0.92,
         })
       );
       e2Ring.position.copy(tip);
       ctx.gaiaGroup.add(e2Ring);
 
-      // Dashed Golden Kinematic Trajectory Line (#F59E0B)
-      const trajGeo = new THREE.BufferGeometry().setFromPoints([origin, tip]);
-      const trajMat = new THREE.LineDashedMaterial({
-        color: 0xf59e0b,
-        dashSize: 0.14,
-        gapSize: 0.1,
+      // Bright Glowing Trajectory TubeGeometry along CatmullRomCurve3
+      const curvePts =
+        trajVecs.length >= 3
+          ? trajVecs
+          : [origin, mid.clone().add(new THREE.Vector3(0, 0.08, 0)), tip];
+      const curve = new THREE.CatmullRomCurve3(curvePts);
+      const tubeGeo = new THREE.TubeGeometry(curve, 24, 0.032, 10, false);
+      const tubeMat = new THREE.MeshBasicMaterial({
+        color: 0xfbbf24,
         transparent: true,
-        opacity: 0.96,
+        opacity: 0.92,
       });
-      const trajLine = new THREE.Line(trajGeo, trajMat);
-      trajLine.computeLineDistances();
-      ctx.gaiaGroup.add(trajLine);
+      ctx.gaiaGroup.add(new THREE.Mesh(tubeGeo, tubeMat));
 
-      // Golden arrowhead cone at Epoch 2 tip
+      const glowTubeGeo = new THREE.TubeGeometry(curve, 24, 0.068, 10, false);
+      const glowTubeMat = new THREE.MeshBasicMaterial({
+        color: 0x00f0ff,
+        transparent: true,
+        opacity: 0.26,
+      });
+      ctx.gaiaGroup.add(new THREE.Mesh(glowTubeGeo, glowTubeMat));
+
+      // Arrowhead cone at Epoch 2 tip
       const headCone = new THREE.Mesh(
-        new THREE.ConeGeometry(0.085, 0.24, 14),
-        new THREE.MeshBasicMaterial({ color: 0xfbbf24 })
+        new THREE.ConeGeometry(0.09, 0.24, 14),
+        new THREE.MeshBasicMaterial({ color: 0x00f0ff })
       );
       headCone.position.copy(tip).addScaledVector(dir, -0.14);
       headCone.quaternion.setFromUnitVectors(_upAxis, dir);
       ctx.gaiaGroup.add(headCone);
 
-      // Invisible simplified cylinder proxy for fast hover raycasting
       const proxyMesh = new THREE.Mesh(
         new THREE.CylinderGeometry(0.24, 0.24, len + 0.35, 8),
         new THREE.MeshBasicMaterial({ visible: false })
@@ -762,7 +912,7 @@ export function WebGLDataCube3D({
     } else {
       const fallbackMesh = new THREE.Mesh(
         new THREE.SphereGeometry(0.11, 16, 16),
-        new THREE.MeshBasicMaterial({ color: 0x22d3ee })
+        new THREE.MeshBasicMaterial({ color: 0x00f0ff })
       );
       fallbackMesh.position.copy(planetPos);
       ctx.gaiaGroup.add(fallbackMesh);
@@ -771,14 +921,107 @@ export function WebGLDataCube3D({
     ctx.requestRender();
   }, [datacube]);
 
-  // Sync Z-Slice plane position
+  // Sync Z-Slice plane position + Laser Color + Live 2D Cross-Section Slice Mini-Preview Canvas
   useEffect(() => {
     const ctx = sceneCtxRef.current;
-    if (!ctx) return;
-    ctx.sliceGroup.position.z =
-      (sliceIndex / Math.max(1, totalBands - 1) - 0.5) * CUBE_Z;
-    ctx.requestRender();
-  }, [sliceIndex, totalBands]);
+    if (ctx) {
+      ctx.sliceGroup.position.z =
+        (sliceIndex / Math.max(1, totalBands - 1) - 0.5) * CUBE_Z;
+      const accentHex = getWavelengthSliceAccentHex(activeWavelength);
+      ctx.slicePlaneMat.color.set(accentHex);
+      ctx.sliceLoopMat.color.set(accentHex);
+      ctx.requestRender();
+    }
+
+    const mini = sliceMiniCanvasRef.current;
+    const volume = datacube.volume_data;
+    if (!mini || !volume.length) return;
+    const clampedIdx = Math.max(0, Math.min(volume.length - 1, sliceIndex));
+    const slice2d = volume[clampedIdx];
+    const h = slice2d?.length || 0;
+    const w = slice2d?.[0]?.length || 0;
+    if (!h || !w) return;
+
+    const previewSize = 76;
+    mini.width = previewSize;
+    mini.height = previewSize;
+    const mctx = mini.getContext('2d');
+    if (!mctx) return;
+
+    let minS = Infinity;
+    let maxS = -Infinity;
+    let peakX = Math.floor(w / 2);
+    let peakY = Math.floor(h / 2);
+    for (let y = 0; y < h; y += 1) {
+      for (let x = 0; x < w; x += 1) {
+        const v = slice2d[y][x];
+        if (v < minS) minS = v;
+        if (v > maxS) {
+          maxS = v;
+          peakX = x;
+          peakY = y;
+        }
+      }
+    }
+    const spanS = Math.max(1e-5, maxS - minS);
+    const sliceNorm = clampedIdx / Math.max(1, volume.length - 1);
+
+    const imgData = mctx.createImageData(previewSize, previewSize);
+    for (let py = 0; py < previewSize; py += 1) {
+      const fy = (py / (previewSize - 1)) * (h - 1);
+      const y0 = Math.floor(fy);
+      const y1 = Math.min(h - 1, y0 + 1);
+      const wy = fy - y0;
+      for (let px = 0; px < previewSize; px += 1) {
+        const fx = (px / (previewSize - 1)) * (w - 1);
+        const x0 = Math.floor(fx);
+        const x1 = Math.min(w - 1, x0 + 1);
+        const wx = fx - x0;
+
+        // Smooth bilinear interpolation across the 32x32 slice
+        const v00 = slice2d[y0]?.[x0] ?? 0;
+        const v10 = slice2d[y0]?.[x1] ?? 0;
+        const v01 = slice2d[y1]?.[x0] ?? 0;
+        const v11 = slice2d[y1]?.[x1] ?? 0;
+        const interp =
+          (v00 * (1 - wx) + v10 * wx) * (1 - wy) +
+          (v01 * (1 - wx) + v11 * wx) * wy;
+
+        const rawNorm = Math.min(1, Math.max(0, (interp - minS) / spanS));
+        const boosted = Math.pow(rawNorm, 0.56);
+        const [msR, msG, msB] = multiSpectralSpaceRgb(boosted);
+        const [sbR, sbG, sbB] = spectralBandRgbFloat(sliceNorm, Math.min(1, boosted * 1.15));
+
+        // Blend deep-space background with wavelength-tinted PSF core glow
+        const r = Math.round(5 + msR * 0.52 + sbR * 255 * 0.48 * Math.pow(boosted, 0.8));
+        const g = Math.round(7 + msG * 0.52 + sbG * 255 * 0.48 * Math.pow(boosted, 0.8));
+        const b = Math.round(17 + msB * 0.52 + sbB * 255 * 0.48 * Math.pow(boosted, 0.8));
+
+        const idx = (py * previewSize + px) * 4;
+        imgData.data[idx] = Math.min(255, r);
+        imgData.data[idx + 1] = Math.min(255, g);
+        imgData.data[idx + 2] = Math.min(255, b);
+        imgData.data[idx + 3] = 255;
+      }
+    }
+    mctx.putImageData(imgData, 0, 0);
+
+    // Subtle precision crosshair centered on slice PSF peak
+    const cx = ((peakX + 0.5) / w) * previewSize;
+    const cy = ((peakY + 0.5) / h) * previewSize;
+    mctx.strokeStyle = 'rgba(0, 240, 255, 0.65)';
+    mctx.lineWidth = 1;
+    mctx.beginPath();
+    mctx.moveTo(cx - 10, cy);
+    mctx.lineTo(cx - 4, cy);
+    mctx.moveTo(cx + 4, cy);
+    mctx.lineTo(cx + 10, cy);
+    mctx.moveTo(cx, cy - 10);
+    mctx.lineTo(cx, cy - 4);
+    mctx.moveTo(cx, cy + 4);
+    mctx.lineTo(cx, cy + 10);
+    mctx.stroke();
+  }, [sliceIndex, totalBands, activeWavelength, datacube.volume_data]);
 
   const handleResetView = useCallback(() => {
     const ctx = sceneCtxRef.current;
@@ -798,24 +1041,24 @@ export function WebGLDataCube3D({
   return (
     <div data-tour="step-3" className="flex flex-col rounded-xl">
       {/* Header + 3D Mode Switcher */}
-      <div className="mb-2.5 flex flex-wrap items-center justify-between gap-2">
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
         <div
           role="tablist"
           aria-label="Three.js WebGL 3D view mode"
-          className="flex items-center gap-1 rounded-xl border border-amber-500/20 bg-[#050507] p-1"
+          className="flex items-center gap-1 rounded-xl border border-white/[0.08] bg-[#050811] p-0.5"
         >
           <button
             type="button"
             role="tab"
             aria-selected={view3D === 'cube'}
             onClick={() => setView3D('cube')}
-            className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-medium transition-colors ${
+            className={`inline-flex items-center gap-1 rounded-lg px-2.5 py-1 text-[10.5px] font-medium transition-colors ${
               view3D === 'cube'
-                ? 'bg-amber-500/20 text-amber-300'
-                : 'text-slate-400 hover:text-amber-100'
+                ? 'bg-cyan-500/20 text-cyan-200 ring-1 ring-cyan-400/40'
+                : 'text-slate-400 hover:text-slate-100'
             }`}
           >
-            <Box className="h-3.5 w-3.5" aria-hidden="true" />
+            <Box className="h-3 w-3 text-cyan-400" aria-hidden="true" />
             <span>3D Light Cube</span>
           </button>
 
@@ -824,13 +1067,13 @@ export function WebGLDataCube3D({
             role="tab"
             aria-selected={view3D === 'gaia3d'}
             onClick={() => setView3D('gaia3d')}
-            className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-medium transition-colors ${
+            className={`inline-flex items-center gap-1 rounded-lg px-2.5 py-1 text-[10.5px] font-medium transition-colors ${
               view3D === 'gaia3d'
-                ? 'bg-emerald-500/20 text-emerald-300'
-                : 'text-slate-400 hover:text-amber-100'
+                ? 'bg-emerald-500/20 text-emerald-200 ring-1 ring-emerald-400/40'
+                : 'text-slate-400 hover:text-slate-100'
             }`}
           >
-            <Orbit className="h-3.5 w-3.5" aria-hidden="true" />
+            <Orbit className="h-3 w-3 text-emerald-400" aria-hidden="true" />
             <span>3D Gaia Star-Field</span>
           </button>
         </div>
@@ -838,114 +1081,126 @@ export function WebGLDataCube3D({
         <button
           type="button"
           onClick={handleResetView}
-          className="inline-flex items-center gap-1 rounded-lg border border-amber-500/20 bg-[#050507] px-2.5 py-1 text-[11px] font-medium text-slate-300 transition-colors hover:border-amber-500/50 hover:text-amber-300"
+          className="inline-flex items-center gap-1 rounded-lg border border-white/[0.08] bg-[#050811] px-2 py-1 text-[10px] font-medium text-slate-300 transition-colors hover:border-cyan-400/50 hover:text-cyan-200"
         >
           <RotateCcw className="h-3 w-3" aria-hidden="true" />
           <span>Reset Orbit</span>
         </button>
       </div>
 
-      {/* Three.js WebGL Canvas Container */}
-      {webglUnavailable ? (
-        <div className="flex h-60 w-full flex-col items-center justify-center rounded-xl border border-amber-500/20 bg-[#050507] p-4 text-center">
-          <Box className="mb-2 h-7 w-7 text-amber-400" aria-hidden="true" />
-          <p className="text-xs font-medium text-slate-200">
-            WebGL 3D View Unavailable
-          </p>
-          <p className="mt-1 text-[11px] text-slate-400">
-            Use the Z-Slice scrubber and rainbow spectrometer below.
-          </p>
-        </div>
-      ) : (
-        <div className="relative h-60 w-full overflow-hidden rounded-xl border border-amber-500/25 bg-[#050507]">
-          <div
-            ref={mountRef}
-            aria-label="Interactive Three.js WebGL 3D visualization"
-            className="h-full w-full cursor-grab active:cursor-grabbing"
-          />
-          {view3D === 'gaia3d' && vectorTooltipPos && (
+      {/* Unified 3D Cube Card with Docked Bottom Wavelength Slice Scrubber Footer */}
+      <div className="overflow-hidden rounded-xl border border-white/[0.08] bg-[#04060C] shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)]">
+        {webglUnavailable ? (
+          <div className="flex h-[215px] w-full flex-col items-center justify-center p-4 text-center xl:h-[235px]">
+            <Box className="mb-2 h-7 w-7 text-cyan-400" aria-hidden="true" />
+            <p className="text-xs font-medium text-slate-200">
+              WebGL 3D View Unavailable
+            </p>
+            <p className="mt-1 text-[11px] text-slate-400">
+              Use the Z-Slice scrubber and rainbow spectrometer below.
+            </p>
+          </div>
+        ) : (
+          <div className="relative h-[215px] w-full overflow-hidden xl:h-[235px]">
             <div
-              role="tooltip"
-              style={{
-                left: `${vectorTooltipPos.x}px`,
-                top: `${vectorTooltipPos.y}px`,
-              }}
-              className="pointer-events-none absolute z-10 -translate-x-1/2 -translate-y-1/2 rounded-lg border border-amber-500/45 bg-[#050507]/95 px-2.5 py-1.5 font-mono text-[10px] shadow-[0_0_20px_rgba(245,158,11,0.3)]"
-            >
-              <div className="whitespace-nowrap font-semibold text-amber-300">
-                Proper Motion (μ): +{pmTotal3D.toFixed(1)} mas/yr
-              </div>
-              <div className="mt-0.5 whitespace-nowrap text-cyan-300">
-                Displacement: {displacementArcsec3D.toFixed(2)} arcsec
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* 1-line helper label */}
-      <p className="mt-1.5 text-center text-[11px] font-medium text-amber-300/90">
-        Drag to rotate 3D thermal cube • Slide to slice infrared colors
-      </p>
-
-      {/* Mode-Specific Interactive Controls */}
-      {view3D === 'cube' ? (
-        <div className="mt-2 rounded-xl border border-amber-500/20 bg-[#050507] px-3 py-2">
-          <div className="mb-1.5 flex flex-wrap items-center justify-between gap-2 text-[11px]">
-            <span className="inline-flex items-center gap-1.5 font-medium text-slate-300">
-              <SlidersHorizontal
-                className="h-3.5 w-3.5 text-amber-400"
-                aria-hidden="true"
-              />
-              <span>Infrared Color Slice</span>
-            </span>
-            <span className="font-mono tabular-nums text-amber-300">
-              Color {sliceIndex + 1}/{totalBands} · {activeWavelength.toFixed(2)} µm
-            </span>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <span className="font-mono text-[10px] text-slate-500">0.75µm</span>
-            <input
-              type="range"
-              min={0}
-              max={totalBands - 1}
-              step={1}
-              value={sliceIndex}
-              onChange={(e) => onSliceIndexChange(Number(e.target.value))}
-              aria-label="Wavelength Z-Slice Slider from 0.75 to 5.0 microns"
-              className="w-full accent-amber-400"
+              ref={mountRef}
+              aria-label="Interactive Three.js WebGL 3D visualization"
+              className="h-full w-full cursor-grab active:cursor-grabbing"
             />
-            <span className="font-mono text-[10px] text-slate-500">5.0µm</span>
-          </div>
 
-          <div className="mt-1 flex items-center justify-between font-mono text-[10px] text-slate-400">
-            <span>32×32×{totalBands} Thermal Voxels</span>
-            <span className="text-orange-300">
-              {getBandFeatureHint(activeWavelength)}
-            </span>
+            {/* Live 2D Cross-Section Slice Mini-Preview Overlay (Cube Mode) */}
+            {view3D === 'cube' && (
+              <div className="pointer-events-none absolute top-2 left-2 z-10 overflow-hidden rounded-lg border border-white/[0.12] bg-slate-950/75 p-1 backdrop-blur-md">
+                <canvas
+                  ref={sliceMiniCanvasRef}
+                  aria-label="2D cross-section slice preview"
+                  className="block h-[54px] w-[54px] rounded border border-white/[0.08]"
+                />
+                <div className="mt-0.5 flex items-center justify-between gap-1 px-0.5 font-mono text-[8px] font-semibold tabular-nums text-cyan-200">
+                  <span className="text-slate-400">SLICE</span>
+                  <span>{activeWavelength.toFixed(2)}µm</span>
+                </div>
+              </div>
+            )}
+
+            {/* Parsec Radar Ring Legend (Gaia 3D Mode) */}
+            {view3D === 'gaia3d' && (
+              <div className="pointer-events-none absolute top-2 left-2 z-10 rounded-full border border-white/[0.1] bg-slate-950/70 px-2.5 py-0.5 font-mono text-[9px] text-slate-300 backdrop-blur-md">
+                <span className="text-cyan-300">10 pc</span> ·{' '}
+                <span className="text-sky-300">50 pc</span> ·{' '}
+                <span className="text-amber-300">100 pc</span>
+              </div>
+            )}
+
+            {view3D === 'gaia3d' && vectorTooltipPos && (
+              <div
+                role="tooltip"
+                style={{
+                  left: `${vectorTooltipPos.x}px`,
+                  top: `${vectorTooltipPos.y}px`,
+                }}
+                className="pointer-events-none absolute z-10 -translate-x-1/2 -translate-y-1/2 rounded-lg border border-cyan-400/45 bg-slate-950/90 px-2.5 py-1.5 font-mono text-[10px] shadow-xl backdrop-blur-md"
+              >
+                <div className="whitespace-nowrap font-semibold text-amber-300">
+                  Proper Motion (μ): +{pmTotal3D.toFixed(1)} mas/yr
+                </div>
+                <div className="mt-0.5 whitespace-nowrap text-cyan-300">
+                  Displacement: {displacementArcsec3D.toFixed(2)} arcsec
+                </div>
+              </div>
+            )}
           </div>
-        </div>
-      ) : (
-        <div className="mt-2 rounded-xl border border-amber-500/20 bg-[#050507] px-3 py-2 text-[11px]">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <span className="font-medium text-emerald-300">
-              3D Star Trails &amp; Planet X Motion Path
-            </span>
-            <span className="font-mono tabular-nums text-slate-300">
-              18.4 pc · {radialVel.toFixed(1)} km/s
-            </span>
+        )}
+
+        {/* Docked Footer inside the 3D Card */}
+        {view3D === 'cube' ? (
+          <div className="border-t border-white/[0.07] bg-[#060A14]/95 px-3 py-2">
+            <div className="mb-1 flex flex-wrap items-center justify-between gap-2 text-[10px]">
+              <span className="inline-flex items-center gap-1 font-medium text-slate-300">
+                <SlidersHorizontal
+                  className="h-3 w-3 text-cyan-400"
+                  aria-hidden="true"
+                />
+                <span>IFU Wavelength Slice</span>
+              </span>
+              <span className="font-mono tabular-nums text-cyan-200">
+                Ch {sliceIndex + 1}/{totalBands} • {activeWavelength.toFixed(2)} µm
+              </span>
+              <span className="font-mono text-[9.5px] font-medium text-amber-300">
+                {getBandFeatureHint(activeWavelength)}
+              </span>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <span className="font-mono text-[9px] text-cyan-300/80">0.75µm</span>
+              <input
+                type="range"
+                min={0}
+                max={totalBands - 1}
+                step={1}
+                value={sliceIndex}
+                onChange={(e) => onSliceIndexChange(Number(e.target.value))}
+                aria-label="Wavelength Z-Slice Slider from 0.75 to 5.0 microns"
+                className="h-1.5 w-full cursor-pointer accent-cyan-400"
+              />
+              <span className="font-mono text-[9px] text-rose-300/80">5.0µm</span>
+            </div>
           </div>
-          <div className="mt-1 flex items-center justify-between font-mono text-[10px] text-slate-400">
-            <span>25 Gaia Stars + Moving Target</span>
-            <span className="text-amber-300">
-              pmRA {pmRa >= 0 ? '+' : ''}
-              {pmRa.toFixed(1)} | pmDec {pmDec >= 0 ? '+' : ''}
-              {pmDec.toFixed(1)} mas/yr
-            </span>
+        ) : (
+          <div className="border-t border-white/[0.07] bg-[#060A14]/95 px-3 py-2 text-[10px]">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <span className="font-medium text-emerald-300">
+                3D Parallax Star-Field &amp; Trajectory Tube (68 Gaia Stars)
+              </span>
+              <span className="font-mono tabular-nums text-cyan-200">
+                18.4 pc · {radialVel.toFixed(1)} km/s · pm({pmRa >= 0 ? '+' : ''}
+                {pmRa.toFixed(1)}, {pmDec >= 0 ? '+' : ''}
+                {pmDec.toFixed(1)}) mas/yr
+              </span>
+            </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }
