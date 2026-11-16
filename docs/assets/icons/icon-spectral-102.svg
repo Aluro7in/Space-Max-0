@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128" role="img" aria-label="102-Band Infrared Spectrometer Icon">
+  <defs>
+    <linearGradient id="bg-spec" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0B1120"/>
+      <stop offset="100%" stop-color="#04060C"/>
+    </linearGradient>
+    <linearGradient id="spec-line" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#00F0FF"/>
+      <stop offset="48%" stop-color="#38BDF8"/>
+      <stop offset="72%" stop-color="#F59E0B"/>
+      <stop offset="100%" stop-color="#F43F5E"/>
+    </linearGradient>
+    <linearGradient id="spec-fill" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#00F0FF" stop-opacity="0.28"/>
+      <stop offset="100%" stop-color="#00F0FF" stop-opacity="0"/>
+    </linearGradient>
+    <filter id="glow-spec" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="2" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <rect x="4" y="4" width="120" height="120" rx="24" fill="url(#bg-spec)" stroke="#1E293B" stroke-width="2"/>
+  <path d="M 28 5 H 100" stroke="#FFFFFF" stroke-opacity="0.18" stroke-width="1.5" stroke-linecap="round"/>
+
+  <!-- Absorption Band Vertical Guides (H2O 1.4um, Dichroic 2.42um, CH4 3.3um) -->
+  <line x1="44" y1="24" x2="44" y2="90" stroke="#38BDF8" stroke-opacity="0.35" stroke-width="1" stroke-dasharray="3 3"/>
+  <line x1="65" y1="24" x2="65" y2="90" stroke="#64748B" stroke-opacity="0.45" stroke-width="1.5" stroke-dasharray="2 2"/>
+  <line x1="86" y1="24" x2="86" y2="90" stroke="#F59E0B" stroke-opacity="0.35" stroke-width="1" stroke-dasharray="3 3"/>
+
+  <!-- Axes -->
+  <path d="M 20 26 V 90 H 108" stroke="#334155" stroke-width="1.8" fill="none" stroke-linecap="round"/>
+
+  <!-- Area Under Spectral Curve -->
+  <path d="M 22 44 L 33 40 L 44 74 L 54 36 L 65 43 L 75 41 L 86 78 L 97 46 L 106 54 V 90 H 22 Z" fill="url(#spec-fill)"/>
+
+  <!-- 102-Band Absorption Curve -->
+  <path d="M 22 44 L 33 40 L 44 74 L 54 36 L 65 43 L 75 41 L 86 78 L 97 46 L 106 54" fill="none" stroke="url(#spec-line)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" filter="url(#glow-spec)"/>
+
+  <!-- Absorption Trough Nodes -->
+  <circle cx="44" cy="74" r="4" fill="#090D18" stroke="#38BDF8" stroke-width="2"/>
+  <circle cx="86" cy="78" r="4" fill="#090D18" stroke="#F59E0B" stroke-width="2"/>
+
+  <text x="44" y="21" text-anchor="middle" fill="#38BDF8" font-family="ui-monospace, monospace" font-size="8" font-weight="700">H₂O</text>
+  <text x="86" y="21" text-anchor="middle" fill="#F59E0B" font-family="ui-monospace, monospace" font-size="8" font-weight="700">CH₄</text>
+
+  <rect x="26" y="97" width="76" height="16" rx="5" fill="#090D18" stroke="#38BDF8" stroke-opacity="0.5" stroke-width="1"/>
+  <text x="64" y="108" text-anchor="middle" fill="#7DD3FC" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="8.5" font-weight="700">0.75–5.0 µm</text>
+</svg>

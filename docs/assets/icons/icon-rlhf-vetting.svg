@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128" role="img" aria-label="Citizen Science RLHF &amp; CSA Vetting Icon">
+  <defs>
+    <linearGradient id="bg-rlhf" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0B1120"/>
+      <stop offset="100%" stop-color="#04060C"/>
+    </linearGradient>
+    <linearGradient id="shield-rlhf" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#10B981" stop-opacity="0.28"/>
+      <stop offset="100%" stop-color="#00F0FF" stop-opacity="0.08"/>
+    </linearGradient>
+    <filter id="glow-rlhf" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="2.5" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <rect x="4" y="4" width="120" height="120" rx="24" fill="url(#bg-rlhf)" stroke="#1E293B" stroke-width="2"/>
+  <path d="M 28 5 H 100" stroke="#FFFFFF" stroke-opacity="0.18" stroke-width="1.5" stroke-linecap="round"/>
+
+  <!-- Verification Shield -->
+  <path d="M 64 20 L 96 32 V 58 C 96 76 81 88 64 94 C 47 88 32 76 32 58 V 32 Z" fill="url(#shield-rlhf)" stroke="#10B981" stroke-width="2" stroke-linejoin="round"/>
+
+  <!-- Exoplanet / Brown Dwarf Ring + Check -->
+  <circle cx="64" cy="55" r="14" fill="#090D18" stroke="#34D399" stroke-width="1.8"/>
+  <ellipse cx="64" cy="55" rx="23" ry="7" transform="rotate(-18 64 55)" fill="none" stroke="#F59E0B" stroke-width="1.6"/>
+  <path d="M 57 55 L 62 60 L 72 49" fill="none" stroke="#10B981" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round" filter="url(#glow-rlhf)"/>
+
+  <rect x="26" y="99" width="76" height="16" rx="5" fill="#090D18" stroke="#10B981" stroke-opacity="0.55" stroke-width="1"/>
+  <text x="64" y="110" text-anchor="middle" fill="#6EE7B7" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="8.5" font-weight="700">RLHF + CSA</text>
+</svg>

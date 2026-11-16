@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128" role="img" aria-label="PyTorch Tri-Model AI Icon">
+  <defs>
+    <linearGradient id="bg-tri" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0B1120"/>
+      <stop offset="100%" stop-color="#04060C"/>
+    </linearGradient>
+    <filter id="glow-tri" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="2.5" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <rect x="4" y="4" width="120" height="120" rx="24" fill="url(#bg-tri)" stroke="#1E293B" stroke-width="2"/>
+  <path d="M 28 5 H 100" stroke="#FFFFFF" stroke-opacity="0.18" stroke-width="1.5" stroke-linecap="round"/>
+
+  <!-- Triangle Synapses -->
+  <polygon points="64,26 30,82 98,82" fill="#A855F7" fill-opacity="0.06" stroke="#334155" stroke-width="1.5"/>
+  <line x1="64" y1="26" x2="64" y2="62" stroke="#00F0FF" stroke-width="2" stroke-opacity="0.7"/>
+  <line x1="30" y1="82" x2="64" y2="62" stroke="#F59E0B" stroke-width="2" stroke-opacity="0.7"/>
+  <line x1="98" y1="82" x2="64" y2="62" stroke="#10B981" stroke-width="2" stroke-opacity="0.7"/>
+
+  <!-- Central Fusion Core -->
+  <circle cx="64" cy="62" r="14" fill="#090D18" stroke="#A855F7" stroke-width="2.2" filter="url(#glow-tri)"/>
+  <circle cx="64" cy="62" r="5.5" fill="#E9D5FF" filter="url(#glow-tri)"/>
+
+  <!-- 3 Model Nodes -->
+  <circle cx="64" cy="26" r="10" fill="#090D18" stroke="#00F0FF" stroke-width="2"/>
+  <text x="64" y="29" text-anchor="middle" fill="#00F0FF" font-family="ui-monospace, monospace" font-size="8" font-weight="700">CNN</text>
+
+  <circle cx="30" cy="82" r="10" fill="#090D18" stroke="#F59E0B" stroke-width="2"/>
+  <text x="30" y="85" text-anchor="middle" fill="#F59E0B" font-family="ui-monospace, monospace" font-size="8" font-weight="700">RNN</text>
+
+  <circle cx="98" cy="82" r="10" fill="#090D18" stroke="#10B981" stroke-width="2"/>
+  <text x="98" y="85" text-anchor="middle" fill="#10B981" font-family="ui-monospace, monospace" font-size="8" font-weight="700">GNN</text>
+
+  <rect x="28" y="99" width="72" height="16" rx="5" fill="#090D18" stroke="#A855F7" stroke-opacity="0.55" stroke-width="1"/>
+  <text x="64" y="110" text-anchor="middle" fill="#D8B4FE" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="8.5" font-weight="700">TRI-MODEL</text>
+</svg>

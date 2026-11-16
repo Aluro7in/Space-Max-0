@@ -31,6 +31,10 @@ Cold substellar worlds—such as **Y-Dwarfs**, **T-Dwarfs**, and distant **Plane
 2. **Hyperspectral 3D Light Cubes:** Slices a `32 × 32 × 102` hyperspectral infrared cube (`0.75–5.0 µm`) in WebGL alongside a live 102-band absorption spectrometer sensitive to `H₂O` (`1.4 / 1.9 µm`), `CH₄` (`2.3 / 3.3 µm`), and `CO` (`4.6 µm`).
 3. **Tri-Model PyTorch + Multi-Agency Vetting:** Combines a **2D-CNN** (cosmic-ray & artifact rejection), **BiGRU Spectral RNN** (102-band chemical classification), and **Gaia DR3 Kinematic GNN** with **CSA NEOSSat / CADC** and **IMCCE SkyBoT** known-asteroid crossmatching—plus live **RLHF PyTorch backward passes** persisted to SQLite.
 
+<div align="center">
+  <img src="./docs/assets/spherex-dataflow-banner.svg" alt="SPHEREx Multi-Epoch FITS to Citizen Discovery 5-Stage Pipeline" width="100%" />
+</div>
+
 ---
 
 ## 🛰️ Three-Step Observatory Workflow
@@ -45,11 +49,55 @@ Cold substellar worlds—such as **Y-Dwarfs**, **T-Dwarfs**, and distant **Plane
 | **Step 02** | **3D Light Cube & Rainbow Fingerprint**<br>`WebGLDataCube3D` · `SpectralChart` | • Interactive Three.js `32×32×102` volumetric cube<br>• **2D Cross-Section Slice** synced with live `µm` laser plane<br>• 3D **Gaia Star-Field** `TubeGeometry` kinematic trails<br>• Recharts 102-band curve with `H₂O`, `CH₄`, `CO` markers<br>• `ZODI` zodiacal background subtraction & `BLANKCH` `51–52` gap mask | Wavelength (`0.75–5.0 µm`), Band `1–102`, Flux (`µJy`), SPHEREx dichroic split (`~2.42 µm`), k-NN spectral template |
 | **Step 03** | **Tri-Model AI, Gemini Guide & RLHF**<br>`DiagnosticsCopilotPanel` · `GeminiMissionChat` | • PyTorch **2D-CNN + BiGRU RNN + Gaia GNN** triad<br>• CSA NEOSSat / CADC & IMCCE SkyBoT asteroid vetting<br>• Multi-turn **Gemini Space Guide** (3 roles × 3 thinking modes)<br>• Citizen-science **RLHF voting** with live `loss` & weight delta<br>• One-click **NASA/IAU Discovery Dossier** JSON export | `Planet X %`, `Brown Dwarf %`, `Artifact %`, SQLite RLHF ledger, Live `/ws/telemetry` stream |
 
+### Instrument & AI Module Suite (`docs/assets/icons/`)
+
+<table>
+  <tr>
+    <td align="center" width="16.6%">
+      <img src="./docs/assets/icons/icon-blink-kinematics.svg" width="76" alt="Blink & Kinematics" /><br />
+      <strong>Blink &amp; Kinematics</strong><br />
+      <sub><code>KinematicVectorOverlay</code></sub>
+    </td>
+    <td align="center" width="16.6%">
+      <img src="./docs/assets/icons/icon-webgl-datacube.svg" width="76" alt="WebGL 3D Light Cube" /><br />
+      <strong>WebGL 3D Cube</strong><br />
+      <sub><code>WebGLDataCube3D</code></sub>
+    </td>
+    <td align="center" width="16.6%">
+      <img src="./docs/assets/icons/icon-spectral-102.svg" width="76" alt="102-Band Spectrometer" /><br />
+      <strong>102-Band IR</strong><br />
+      <sub><code>SpectralChart</code></sub>
+    </td>
+    <td align="center" width="16.6%">
+      <img src="./docs/assets/icons/icon-trimodel-ai.svg" width="76" alt="PyTorch Tri-Model AI" /><br />
+      <strong>Tri-Model AI</strong><br />
+      <sub><code>ml_pipeline.py</code></sub>
+    </td>
+    <td align="center" width="16.6%">
+      <img src="./docs/assets/icons/icon-gemini-copilot.svg" width="76" alt="Gemini Space Guide Copilot" /><br />
+      <strong>Gemini Copilot</strong><br />
+      <sub><code>GeminiMissionChat</code></sub>
+    </td>
+    <td align="center" width="16.6%">
+      <img src="./docs/assets/icons/icon-rlhf-vetting.svg" width="76" alt="RLHF & CSA Vetting" /><br />
+      <strong>RLHF &amp; Vetting</strong><br />
+      <sub><code>DiagnosticsCopilotPanel</code></sub>
+    </td>
+  </tr>
+</table>
+
 ---
 
 ## 🏗️ System Architecture
 
-Space-Max 0 pairs a high-contrast **React 19 + Three.js** observatory UI served by a lightweight **Express BFF** (port `3000`, protecting `GEMINI_API_KEY` server-side) with a cloud-hosted **FastAPI + PyTorch + Astropy** discovery engine (`https://space-max-0-backend.onrender.com`).
+Space-Max 0 pairs a high-contrast **React 19 + Three.js WebGL** observatory UI served by a lightweight **Express BFF** (port `3000`, protecting `GEMINI_API_KEY` server-side for the **Gemini AI Copilot**) with a cloud-hosted **FastAPI + PyTorch + Astropy SPHEREx data pipeline** (`https://space-max-0-backend.onrender.com`).
+
+<div align="center">
+  <img src="./docs/assets/system-architecture.svg" alt="Space-Max 0 System Architecture: SPHEREx Data Pipeline, WebGL 3D Engine, and Gemini AI Copilot" width="100%" />
+</div>
+
+<details>
+<summary><b>View Interactive Mermaid Topology &amp; RLHF Sequence Diagrams</b></summary>
 
 ```mermaid
 flowchart LR
@@ -118,6 +166,8 @@ sequenceDiagram
     Py-->>UI: Return live post-confidence & community telemetry
 ```
 
+</details>
+
 ---
 
 ## 🌟 Built-In NASA / SPHEREx Target Presets
@@ -164,7 +214,16 @@ space-max-0/
 ├── docs/
 │   └── assets/
 │       ├── hero-banner.jpg              # README hero visual
-│       └── tri-step-observatory.jpg     # 3-step visual showcase
+│       ├── tri-step-observatory.jpg     # 3-step visual showcase
+│       ├── system-architecture.svg      # End-to-end SPHEREx / WebGL / Gemini diagram
+│       ├── spherex-dataflow-banner.svg  # 5-stage FITS-to-Discovery pipeline graphic
+│       └── icons/
+│           ├── icon-blink-kinematics.svg
+│           ├── icon-webgl-datacube.svg
+│           ├── icon-spectral-102.svg
+│           ├── icon-trimodel-ai.svg
+│           ├── icon-gemini-copilot.svg
+│           └── icon-rlhf-vetting.svg
 ├── src/
 │   ├── App.tsx                          # 3-column bento observatory shell & scan orchestrator
 │   ├── index.css                        # Deep Cosmic Void theme, glassmorphism & Tailwind v4
