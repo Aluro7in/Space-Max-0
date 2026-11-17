@@ -2,7 +2,7 @@
 
 <img src="./docs/assets/hero-banner.jpg" alt="Space-Max 0 Orbital Intelligence Engine Hero Banner" width="100%" />
 
-# Space-Max 0: Orbital Intelligence Engine
+# Space-Max 0 : Orbital Intelligence Engine
 
 **Multi-Spectral Infrared Discovery Workbench for NASA SPHEREx, WISE, 2MASS, ESA Gaia DR3 & Citizen Science RLHF**
 
