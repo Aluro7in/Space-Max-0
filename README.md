@@ -333,6 +333,8 @@ Point the frontend to your local FastAPI instance by setting `VITE_PYTHON_API_UR
 
 ---
 
+https://space-max.ai.studio/?ra=166.33243&dec=29.94057&fov=0.15
+
 ## 📄 License
 
 Distributed under the **GNU General Public License v3.0 (GPL-3.0)**. See [`LICENSE`](./LICENSE) for full terms.
